@@ -85,7 +85,7 @@ sequenceDiagram
     U  ->> M  : choice → BacktrackMode + DisplayMode
 
     M  ->> Mz : maze_load(filepath)
-    Note over Mz: parse COLSxROWS<br/>fill cells[], find P and S<br/>BFS from S → reachable[]<br/>rand values → treasure_values[]
+    Note over Mz: infer cols×rows from grid<br/>fill cells[], find P and S<br/>BFS from S → reachable[]<br/>rand values → treasure_values[]
     Mz -->> M : Maze* (or NULL → exit)
 
     M  ->> LL : list_init(&backpack)
