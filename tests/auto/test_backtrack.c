@@ -111,6 +111,38 @@ static void test_best_no_solution(void) {
     list_free(&backpack);
 }
 
+static void test_first_backtrack_no_ghost_treasure(void) {
+    printf("first: backtracked treasure not counted:\n");
+    /*
+     * The only route to S forces a detour through a dead end containing T:
+     *
+     *   #######
+     *   #P    #
+     *   ### ###
+     *   # T   #
+     *   ### ###
+     *   #     #
+     *   #    S#
+     *   #######
+     *
+     * DFS must enter T (dead end branch), backtrack, then reach S via a
+     * corridor that has no treasure. The final backpack must be empty.
+     */
+    Maze m = make_maze("#######"
+                       "#P    #"
+                       "### ###"
+                       "# T   #"
+                       "### ###"
+                       "#     #"
+                       "#    S#"
+                       "#######", 7, 8);
+    LinkedList backpack; list_init(&backpack);
+    int found = backtrack_run(&m, &backpack, BACKTRACK_FIRST, DISPLAY_NONE);
+    ASSERT(found == 1,         "exit reached");
+    ASSERT(backpack.size == 0, "backtracked treasure not in final backpack");
+    list_free(&backpack);
+}
+
 static void test_best_picks_richer_path(void) {
     printf("best: picks path with more treasure:\n");
     /*
@@ -145,6 +177,7 @@ int main(void) {
     test_treasure_collected();
     test_trap_removes_lowest();
     test_dead_end_backtrack();
+    test_first_backtrack_no_ghost_treasure();
     test_best_finds_exit();
     test_best_no_solution();
     test_best_picks_richer_path();

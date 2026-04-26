@@ -108,11 +108,14 @@ static void build_step_desc(char *buf, int bufsize,
         snprintf(buf, bufsize, "%s (%d, %d)", prefix, r, c);
 }
 
+typedef struct { char type; int value; } CellEvent;
+
 /**
  * @brief Iterative DFS; returns 1 at the first path that reaches the exit.
  *
- * Iterative (not recursive) because we stop immediately on the first exit —
- * no call-stack undo or backtracking state management is needed.
+ * Iterative (not recursive) because we stop immediately on the first exit.
+ * Cell events are undone on backtrack so the backpack reflects exactly the
+ * cells that appear on the final solution path.
  *
  * @param maze     Source maze; visited[] is mutated.
  * @param backpack Player's backpack; modified by events along the path.
@@ -123,6 +126,11 @@ static void build_step_desc(char *buf, int bufsize,
 static int run_first(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode display) {
     int cols = maze->cols;
     int offsets[4] = {-cols, +cols, -1, +1};
+
+    /* Track what happened when we entered each cell so we can undo it on
+     * backtrack, keeping the backpack in sync with the current path. */
+    CellEvent events[MAX_CELLS];
+    memset(events, 0, sizeof(events));
 
     char step_desc[128];
     build_step_desc(step_desc, sizeof(step_desc),
@@ -156,13 +164,12 @@ static int run_first(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode 
             if (!maze_is_valid(maze, next))  continue;
             if (!maze->reachable[next])      continue; /* skip dead-end cells */
 
-            char ev_type; int ev_val;
-            apply_event(maze, next, backpack, &ev_type, &ev_val);
+            apply_event(maze, next, backpack, &events[next].type, &events[next].value);
             maze->visited[next] = 1;
             stack_push(path, next);
             found = 1;
             build_step_desc(step_desc, sizeof(step_desc),
-                            "Moved to", next, cols, ev_type, ev_val);
+                            "Moved to", next, cols, events[next].type, events[next].value);
             break; /* commit to the first valid neighbor; backtrack later if needed */
         }
 
@@ -171,10 +178,10 @@ static int run_first(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode 
                             "Dead end at", current, cols, 0, 0);
             int len = strlen(step_desc);
             snprintf(step_desc + len, sizeof(step_desc) - len, "  —  Backtracking...");
-            stack_pop(path);
-            /* Note: visited flag is NOT cleared on FIRST backtrack. Once a cell
-             * is visited in this mode it is never revisited — avoids cycles and
-             * is safe because we only need any one path, not the optimal one. */
+            int popped = stack_pop(path);
+            /* Undo the event so the backpack reflects only cells still on the path.
+             * visited stays 1 — once explored, a cell is never re-entered. */
+            undo_event(backpack, events[popped].type, events[popped].value);
         }
     }
     return 0;
@@ -187,8 +194,6 @@ typedef struct {
     int   total_value;
     int   found;
 } Solution;
-
-typedef struct { char type; int value; } CellEvent;
 
 /**
  * @brief Recursive DFS with full event undo; finds the highest-value exit path.
