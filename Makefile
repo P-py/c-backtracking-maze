@@ -2,7 +2,7 @@ CC     = gcc
 CFLAGS = -Wall -Wextra -g -Isrc -MMD -MP
 BUILD  = build
 
-# ── Main objects ────────────────────────────────────────────────────────────
+# Main objects
 OBJ = $(BUILD)/main.o       \
       $(BUILD)/maze.o       \
       $(BUILD)/stack.o      \
@@ -12,7 +12,7 @@ OBJ = $(BUILD)/main.o       \
 
 -include $(OBJ:.o=.d)
 
-# ── Top-level targets ────────────────────────────────────────────────────────
+# Top-level targets
 .PHONY: all test test-visual clean
 
 all: maze
@@ -20,7 +20,7 @@ all: maze
 maze: $(OBJ)
 	$(CC) $(CFLAGS) $^ -o $@
 
-# ── Automated tests ──────────────────────────────────────────────────────────
+# Automated tests
 test: $(BUILD)/test_stack $(BUILD)/test_linked_list $(BUILD)/test_backtrack
 	@echo "=== test_stack ==="
 	./$(BUILD)/test_stack
@@ -40,7 +40,7 @@ $(BUILD)/test_backtrack: tests/auto/test_backtrack.c \
                          $(BUILD)/maze.o $(BUILD)/backtrack.o $(BUILD)/renderer.o | $(BUILD)
 	$(CC) $(CFLAGS) $^ -o $@
 
-# ── Visual tests ─────────────────────────────────────────────────────────────
+# Visual tests
 test-visual: $(BUILD)/visual_test_maze $(BUILD)/visual_test_backpack
 	./$(BUILD)/visual_test_maze mazes/maze_10x10.txt
 	./$(BUILD)/visual_test_backpack
@@ -53,7 +53,7 @@ $(BUILD)/visual_test_backpack: tests/visual/visual_test_backpack.c \
                                $(BUILD)/linked_list.o | $(BUILD)
 	$(CC) $(CFLAGS) $^ -o $@
 
-# ── Compile rules ─────────────────────────────────────────────────────────────
+# Compile rules
 $(BUILD)/%.o: src/%.c | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -69,6 +69,6 @@ $(BUILD)/%.o: src/structures/%.c | $(BUILD)
 $(BUILD):
 	mkdir -p $(BUILD)
 
-# ── Clean ─────────────────────────────────────────────────────────────────────
+# Clean
 clean:
 	rm -rf $(BUILD) maze

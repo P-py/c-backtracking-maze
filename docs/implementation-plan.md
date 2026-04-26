@@ -2,8 +2,6 @@
 
 Build order follows the dependency graph — lower layers first, no module depends on something above it.
 
----
-
 ## Phase 1 — Project Scaffold
 
 Create the directory structure and the Makefile before writing any C.
@@ -15,8 +13,6 @@ Create the directory structure and the Makefile before writing any C.
 - `Makefile` (see `docs/makefile-patterns.md`)
 
 **Done when:** `make clean && make` produces no errors (even with empty stubs).
-
----
 
 ## Phase 2 — Data Structures
 
@@ -66,8 +62,6 @@ void list_free(LinkedList *l);
 
 **Test (`tests/auto/test_linked_list.c`):** insert several values and verify order, remove from empty list, remove-then-insert sequence.
 
----
-
 ## Phase 3 — Maze
 
 Depends on: nothing (only `stdio.h`, `stdlib.h`, `string.h`).
@@ -100,8 +94,6 @@ char  maze_cell(const Maze *m, int pos);
 3. Each subsequent line is a row; pad or truncate to `cols` if needed.
 
 **No automated test needed here** — validated through the visual test and backtrack test.
-
----
 
 ## Phase 4 — Engine
 
@@ -165,8 +157,6 @@ Direction offsets: `UP = -cols`, `DOWN = +cols`, `LEFT = -1`, `RIGHT = +1`.
 
 **Test (`tests/auto/test_backtrack.c`):** use a small hardcoded maze string (bypass file I/O), verify `backtrack_run` returns 1 and path hits the exit; test a maze with no solution returns 0.
 
----
-
 ## Phase 5 — Main Entry Point (`src/main.c`)
 
 Depends on: everything.
@@ -190,8 +180,6 @@ Total treasure value: 230 coins
 Backpack: [15, 40, 75, 100]
 ```
 
----
-
 ## Phase 6 — Sample Mazes
 
 Create the four maze files referenced in the README:
@@ -201,8 +189,6 @@ Create the four maze files referenced in the README:
 - `mazes/maze_40x40.txt`
 
 Each must have at least one valid path from `P` to `S`, at least one `T`, and at least one `A`.
-
----
 
 ## Dependency Graph
 

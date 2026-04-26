@@ -2,8 +2,6 @@
 
 Visual overview of how the modules interact and what each one is responsible for.
 
----
-
 ## 1. Module Dependency Map
 
 Who knows about whom at compile time. Arrows mean "depends on / includes".
@@ -37,8 +35,6 @@ graph TD
 
 **Key rule:** data structures (`stack`, `linked_list`) and `maze` have zero internal dependencies — they are the foundation. `backtrack` is the only module that orchestrates all the others. `main` only sets up and tears down.
 
----
-
 ## 2. Ownership of Data
 
 Each live object is owned by exactly one place.
@@ -64,8 +60,6 @@ graph LR
     renderer_uses -. "reads only"       .-> maze_obj
     renderer_uses -. "reads only"       .-> backpack_obj
 ```
-
----
 
 ## 3. Runtime Sequence
 
@@ -118,8 +112,6 @@ sequenceDiagram
     M ->> LL : list_free(&backpack)
 ```
 
----
-
 ## 4. Backtracking Algorithm
 
 The core loop inside `backtrack_run`.
@@ -154,8 +146,6 @@ flowchart TD
     EMPTY -->|No| DRAW
 ```
 
----
-
 ## 5. Data Structure Roles
 
 ### Stack — the path memory
@@ -180,8 +170,6 @@ insert(40)   insert(15)   insert(75)   remove_head()   insert(60)
 ```
 
 Always sorted ascending so the **head is always the cheapest treasure** — the one sacrificed on a trap, minimising total loss. `list_insert` walks to the correct position; `list_remove_head` is O(1).
-
----
 
 ## 6. Maze Memory Layout
 
