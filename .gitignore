@@ -1,6 +1,6 @@
 # Build artifacts
 build/
-maze
+/maze
 
 # Generated output
 output/solution.txt
