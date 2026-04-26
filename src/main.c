@@ -7,11 +7,23 @@
 #include <backtrack.h>
 #include <linked_list.h>
 
+/**
+ * @brief Discard stdin through the next newline, including the newline itself.
+ *
+ * Required after scanf: scanf leaves the trailing '\n' in the buffer, which
+ * interactive mode's wait_enter() would consume immediately without pausing.
+ */
 static void flush_stdin(void) {
     int c;
     while ((c = getchar()) != '\n' && c != EOF);
 }
 
+/**
+ * @brief Prompt for a maze file path and read it into @p buf.
+ * @param buf      Output buffer for the path.
+ * @param bufsize  Size of @p buf in bytes.
+ * @return         1 if a non-empty path was read, 0 otherwise.
+ */
 static int read_filepath(char *buf, int bufsize) {
     printf("Maze file path: ");
     fflush(stdout);
@@ -20,6 +32,7 @@ static int read_filepath(char *buf, int bufsize) {
     return buf[0] != '\0';
 }
 
+/** @brief Print the execution-mode menu to stdout. */
 static void print_menu(void) {
     printf("\nExecution mode:\n");
     printf("  1. Interactive     —  First path\n");
@@ -32,12 +45,17 @@ static void print_menu(void) {
     fflush(stdout);
 }
 
+/**
+ * @brief Entry point: parse arguments, show the menu, and run the solver.
+ * @return 0 on success, 1 on any error.
+ */
 int main(int argc, char *argv[]) {
     printf("=== MAZE SOLVER ===\n\n");
 
     char filepath[256];
 
     if (argc >= 2) {
+        /* strncpy does not guarantee null termination when src length >= bufsize. */
         strncpy(filepath, argv[1], sizeof(filepath) - 1);
         filepath[sizeof(filepath) - 1] = '\0';
     } else {
@@ -54,7 +72,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Invalid choice.\n");
         return 1;
     }
-    flush_stdin();
+    flush_stdin(); /* clear '\n' before interactive mode starts reading chars */
 
     BacktrackMode mode;
     DisplayMode   display;
@@ -69,14 +87,16 @@ int main(int argc, char *argv[]) {
         default: return 1;
     }
 
+    /* srand must be called before maze_load: maze_assign_treasures (called
+     * inside maze_load) uses rand() to set treasure values at load time. */
     srand((unsigned int)time(NULL));
 
     Maze *m = maze_load(filepath);
     if (!m) return 1;
 
-    const char *mode_str    = (mode    == BACKTRACK_BEST)  ? "Best path"       : "First path";
-    const char *display_str = (display == DISPLAY_AUTO)    ? "Auto (display)"  :
-                              (display == DISPLAY_INTERACTIVE) ? "Interactive"  : "Auto (silent)";
+    const char *mode_str    = (mode    == BACKTRACK_BEST)     ? "Best path"      : "First path";
+    const char *display_str = (display == DISPLAY_AUTO)       ? "Auto (display)" :
+                              (display == DISPLAY_INTERACTIVE) ? "Interactive"    : "Auto (silent)";
 
     printf("\nMode    : %s\n", mode_str);
     printf("Display : %s\n", display_str);

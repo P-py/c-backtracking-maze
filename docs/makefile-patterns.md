@@ -5,14 +5,15 @@ How the project's Makefile is structured and why.
 ## Variables
 
 ```makefile
-CC      = gcc
-CFLAGS  = -Wall -Wextra -g -Isrc
+CC     = gcc
+CFLAGS = -Wall -Wextra -g -Isrc -MMD -MP -Iinclude
 
-SRC_DIR   = src
-BUILD_DIR = build
+BUILD  = build
 ```
 
-`-Isrc` lets every file use `#include "maze/maze.h"` instead of relative `../` paths.  
+`-Iinclude` lets every file use `#include <maze.h>` (angle-bracket style) regardless of where it lives in `src/`.  
+`-Isrc` is kept so nested source paths remain resolvable during compilation.  
+`-MMD -MP` generate `.d` dependency files that track header changes (see below).  
 `-g` keeps debug symbols; strip it for a release build.
 
 ## Directory Layout (build artifacts)
@@ -93,13 +94,14 @@ $(BUILD_DIR)/test_backtrack: tests/auto/test_backtrack.c $(BUILD_DIR)/stack.o \
 	$(CC) $(CFLAGS) $^ -o $@
 ```
 
-## Automatic Dependency Tracking (optional but recommended)
+## Automatic Dependency Tracking
 
-Avoids stale `.o` files when a header changes:
+Avoids stale `.o` files when a header changes. Already enabled in `CFLAGS` via `-MMD -MP`:
+
 ```makefile
-CFLAGS += -MMD -MP
 -include $(OBJ:.o=.d)
 ```
 
-`-MMD` generates a `.d` file next to each `.o` with the header dependencies.  
-`-include` silently skips missing `.d` files on the first build.
+`-MMD` generates a `.d` file alongside each `.o` listing all headers the source depends on.  
+`-include` (with the leading `-`) silently skips missing `.d` files on the first build.  
+After the first build, changing any header automatically triggers a recompile of every affected `.o`.

@@ -6,7 +6,13 @@ Conventions used across this project.
 
 Every module is a pair of files:
 - `module.h` — public interface: includes, constants, type definitions, function prototypes only. Include only what the header itself directly uses (`<stddef.h>` for `size_t`, not the whole `<stdlib.h>`).
-- `module.c` — implementation: includes its own header first, then any others it needs.
+- `module.c` — implementation: includes its own header first (`<module.h>`), then any others it needs.
+
+All headers live in `include/`. Compilation uses `-Iinclude`, so every file includes with angle brackets:
+```c
+#include <maze.h>        /* not "maze/maze.h" */
+#include <linked_list.h>
+```
 
 Header guard format (macro name = filename in `UPPER_SNAKE_CASE`, `.` → `_`):
 ```c
@@ -89,19 +95,19 @@ Three patterns depending on what a function does:
 **Status functions** return `int` — `1` on success/true, `0` on failure/false:
 ```c
 int stack_is_empty(const Stack *s);
-int list_insert(LinkedList *l, int value);  /* 0 if malloc fails */
+int list_remove_value(LinkedList *l, int value);  /* 1 if found, 0 if not */
 ```
 
-**Pop / peek functions** return the value directly. Caller must check emptiness first — there is no sentinel that reliably signals "empty" when valid values include `0` and `-1`:
+**Void mutators** that cannot fail (malloc failure calls `exit()`):
 ```c
-int stack_pop(Stack *s);            /* call only when non-empty */
-int list_remove_head(LinkedList *l); /* call only when non-empty */
+void list_insert(LinkedList *l, int value);  /* exits on malloc failure */
+void stack_push(Stack *s, int value);        /* prints error and returns on overflow */
 ```
 
-**Fallible removal** (e.g., remove by index) uses an output parameter and returns status:
+**Pop / peek functions** return the value directly and `-1` on empty as a diagnostic sentinel:
 ```c
-int list_remove_at(LinkedList *l, size_t index, int *out);
-/* *out receives the removed value; returns 0 if index out of range */
+int stack_pop(Stack *s);             /* -1 on empty */
+int list_remove_head(LinkedList *l); /* -1 on empty */
 ```
 
 ## `const` Correctness
@@ -122,9 +128,11 @@ int  list_remove_head(LinkedList *l);
 
 Use `size_t` (from `<stddef.h>`) for counts, sizes, and index parameters — it is unsigned and matches the platform's address space, eliminating signed/unsigned comparison warnings:
 ```c
-size_t list_size(const LinkedList *l);
-int    list_remove_at(LinkedList *l, size_t index, int *out);
+/* example */
+size_t count_passable_cells(const Maze *m);
 ```
+
+In this project, indices into the 1D maze array use plain `int` because offsets can be negative (direction arithmetic), and the grid is bounded by `MAX_CELLS` which fits in `int`.
 
 ## Memory Management
 
@@ -156,7 +164,7 @@ if (!f) {
 
 Pass structs by pointer, never by value:
 ```c
-void backtrack_run(Maze *maze, Stack *path, LinkedList *backpack);
+int backtrack_run(Maze *maze, LinkedList *backpack, BacktrackMode mode, DisplayMode display);
 ```
 
 Prefer returning a result directly over writing to a global. Use output parameters only when a function genuinely needs to return two things:

@@ -32,8 +32,6 @@ static Maze make_maze(const char *grid, int cols, int rows) {
     return m;
 }
 
-/* ── first-path tests ────────────────────────────────────────────────────── */
-
 static void test_simple_path(void) {
     printf("first: simple path (P _ S):\n");
     Maze m = make_maze("#####"
@@ -91,8 +89,6 @@ static void test_dead_end_backtrack(void) {
     ASSERT(backtrack_run(&m, &backpack, BACKTRACK_FIRST, DISPLAY_NONE) == 0, "returns 0");
     list_free(&backpack);
 }
-
-/* ── best-path tests ─────────────────────────────────────────────────────── */
 
 static void test_best_finds_exit(void) {
     printf("best: finds exit:\n");
