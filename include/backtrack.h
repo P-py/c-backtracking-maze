@@ -14,6 +14,11 @@
 #include <maze.h>
 #include <linked_list.h>
 
-int backtrack_run(Maze *maze, LinkedList *backpack);
+typedef enum {
+    BACKTRACK_FIRST = 0, /* stop at the first path that reaches the exit   */
+    BACKTRACK_BEST       /* explore all paths; keep the highest-value haul  */
+} BacktrackMode;
+
+int backtrack_run(Maze *maze, LinkedList *backpack, BacktrackMode mode);
 
 #endif /* BACKTRACK_H */

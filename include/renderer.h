@@ -14,7 +14,10 @@
 #include <linked_list.h>
 #include <stack.h>
 
-void renderer_draw (const Maze *m, int current_pos, const LinkedList *backpack);
-void renderer_write_solution (const Stack *path, const Maze *m);
+void renderer_set_delay      (unsigned int delay_us);
+void renderer_draw           (const Maze *m, int current_pos,
+                              const LinkedList *backpack, const Stack *path);
+void renderer_print_solution (const Stack *path, const Maze *m);
+void renderer_write_solution (const Stack *path, const Maze *m, const LinkedList *backpack);
 
 #endif /* RENDERER_H */

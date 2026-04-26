@@ -2,7 +2,7 @@
 
 Build order follows the dependency graph — lower layers first, no module depends on something above it.
 
-## Phase 1 — Project Scaffold
+## Phase 1 — Project Scaffold ✓
 
 Create the directory structure and the Makefile before writing any C.
 
@@ -14,11 +14,11 @@ Create the directory structure and the Makefile before writing any C.
 
 **Done when:** `make clean && make` produces no errors (even with empty stubs).
 
-## Phase 2 — Data Structures
+## Phase 2 — Data Structures ✓
 
 No dependencies on other modules. Build and test these in isolation.
 
-### 2a. Stack (`src/structures/stack.h` + `stack.c`)
+### 2a. Stack (`src/structures/stack.h` + `stack.c`) ✓
 
 The stack holds `int` values representing 1D cell indices during backtracking.
 
@@ -37,7 +37,7 @@ int  stack_is_empty(const Stack *s);
 
 **Test (`tests/auto/test_stack.c`):** push/pop sequence, empty-stack peek/pop guard, overflow guard.
 
-### 2b. Sorted Linked List / Backpack (`src/structures/linked_list.h` + `linked_list.c`)
+### 2b. Sorted Linked List / Backpack (`src/structures/linked_list.h` + `linked_list.c`) ✓
 
 Sorted ascending; head is always the lowest-value treasure.
 
@@ -53,16 +53,17 @@ typedef struct {
     int   size;
 } LinkedList;
 
-void list_init(LinkedList *l);
-void list_insert(LinkedList *l, int value);   // inserts in sorted order
-int  list_remove_head(LinkedList *l);         // removes lowest; returns value or -1 if empty
-void list_print(const LinkedList *l);
-void list_free(LinkedList *l);
+void list_init        (LinkedList *l);
+void list_insert      (LinkedList *l, int value);   // inserts in sorted order
+int  list_remove_head (LinkedList *l);              // removes lowest; returns value or -1 if empty
+int  list_remove_value(LinkedList *l, int value);   // removes first node matching value (best-path undo)
+void list_print       (const LinkedList *l);
+void list_free        (LinkedList *l);
 ```
 
 **Test (`tests/auto/test_linked_list.c`):** insert several values and verify order, remove from empty list, remove-then-insert sequence.
 
-## Phase 3 — Maze
+## Phase 3 — Maze ✓
 
 Depends on: nothing (only `stdio.h`, `stdlib.h`, `string.h`).
 
@@ -95,67 +96,73 @@ char  maze_cell(const Maze *m, int pos);
 
 **No automated test needed here** — validated through the visual test and backtrack test.
 
-## Phase 4 — Engine
+## Phase 4 — Engine ✓
 
-### 4a. Renderer (`src/engine/renderer.h` + `renderer.c`)
+### 4a. Renderer (`src/engine/renderer.h` + `renderer.c`) ✓
 
-Depends on: `Maze`, `LinkedList`.
+Depends on: `Maze`, `LinkedList`, `Stack`.
 
 ```c
-void renderer_draw(const Maze *m, int current_pos, const LinkedList *backpack);
-// Clears terminal, prints maze with current_pos marked '@', then backpack contents.
-// Uses usleep() for the step delay (e.g., 80 ms).
-
+void renderer_set_delay     (unsigned int delay_us);
+void renderer_draw          (const Maze *m, int current_pos,
+                             const LinkedList *backpack, const Stack *path);
+void renderer_print_solution(const Stack *path, const Maze *m);
 void renderer_write_solution(const Stack *path, const Maze *m);
-// Writes each cell index and its (row, col) to output/solution.txt.
 ```
 
-Terminal clearing: use `printf("\033[H\033[J")` (ANSI escape — works on Linux/macOS terminals).
+- `renderer_draw`: clears terminal (`\033[H\033[J`), prints maze with `@` at current position, `.` on corridor cells that are on the current path, and original characters elsewhere. Then prints backpack contents. Sleeps `step_delay_us` microseconds (default 80 ms).
+- `renderer_print_solution`: prints the final solved maze with `.` on the solution path to stdout.
+- `renderer_write_solution`: writes step-by-step path (index, row, col, cell char) to `output/solution.txt`.
+- `renderer_set_delay`: sets the per-step delay (pass 0 in tests to disable).
 
-**Visual test (`tests/visual/visual_test_maze.c`):** load a maze, simulate a few manual moves, call `renderer_draw` at each step.
-
-### 4b. Backtracking Engine (`src/engine/backtrack.h` + `backtrack.c`)
+### 4b. Backtracking Engine (`src/engine/backtrack.h` + `backtrack.c`) ✓
 
 Depends on: `Maze`, `Stack`, `LinkedList`, `renderer`.
 
 ```c
-typedef enum { UP = 0, DOWN, LEFT, RIGHT } Direction;
+typedef enum {
+    BACKTRACK_FIRST = 0,  // stop at first exit found
+    BACKTRACK_BEST        // exhaustive search, return path with highest treasure value
+} BacktrackMode;
 
-// Returns 1 if exit found, 0 if no solution.
-int backtrack_run(Maze *maze, LinkedList *backpack);
+int backtrack_run(Maze *maze, LinkedList *backpack, BacktrackMode mode);
 ```
 
-**Algorithm:**
+**BACKTRACK_FIRST — iterative DFS:**
 ```
-push player_pos onto path_stack
-mark player_pos visited
-
+push player_pos; mark visited
 loop:
-    current = peek(path_stack)
-    renderer_draw(maze, current, backpack)
-
-    if maze_cell(current) == 'S': SUCCESS — write solution, return 1
-
-    found_next = false
-    for each direction (UP, DOWN, LEFT, RIGHT):
-        next = current + direction_offset
-        if maze_is_valid(maze, next):
-            handle cell event at next (treasure → list_insert, trap → list_remove_head)
-            push next onto path_stack
-            mark next visited
-            found_next = true
-            break
-
-    if !found_next:
-        pop path_stack   // backtrack — do NOT undo cell events (treasures/traps are permanent)
-        if stack_is_empty: return 0  // no solution
+    current = peek(stack)
+    renderer_draw(...)
+    if cell == 'S': print solution, return 1
+    for each direction:
+        if neighbor valid:
+            apply_event(neighbor, backpack)   // T → insert, A → remove_head
+            mark neighbor visited; push; break
+    if no neighbor found: pop (backtrack)
+return 0 (no solution)
 ```
 
-Direction offsets: `UP = -cols`, `DOWN = +cols`, `LEFT = -1`, `RIGHT = +1`.
+**BACKTRACK_BEST — recursive DFS with undo:**
+```
+explore(current):
+    renderer_draw(...)
+    if cell == 'S':
+        compute total; if total > best: save path + backpack snapshot
+        return
+    for each direction:
+        apply_event(neighbor, &events[neighbor])
+        mark visited; push; explore(neighbor)
+        pop; unmark visited; undo_event(events[neighbor])
 
-**Trap with empty backpack:** call `list_remove_head`; it returns `-1` — log a warning to `stderr` and continue.
+Undo rules: T → list_remove_value(value); A → list_insert(value) if value != -1
+```
 
-**Test (`tests/auto/test_backtrack.c`):** use a small hardcoded maze string (bypass file I/O), verify `backtrack_run` returns 1 and path hits the exit; test a maze with no solution returns 0.
+**Column-wrap guard:** skip LEFT if `current % cols == 0`; skip RIGHT if `current % cols == cols-1`.
+
+**Test (`tests/auto/test_backtrack.c`):** 8 tests — simple path, no solution, treasure, trap, dead-end backtrack (first mode); exit found, no solution, picks richer path (best mode). Mazes are inline strings, no file I/O. Delay set to 0 via `renderer_set_delay(0)`.
+
+**Visual test (`tests/visual/visual_test_maze.c`):** accepts `[first|best]` as second arg; calls `backtrack_run` and prints summary.
 
 ## Phase 5 — Main Entry Point (`src/main.c`)
 
@@ -163,17 +170,18 @@ Depends on: everything.
 
 ```c
 int main(int argc, char *argv[]) {
-    // 1. Validate argc (expect exactly 1 argument: maze file path)
-    // 2. maze_load(argv[1]) — exit on NULL
-    // 3. Initialize LinkedList backpack
-    // 4. backtrack_run(maze, &backpack)
-    // 5. Print final summary to stdout
-    // 6. list_free, maze_free
-    // 7. return 0
+    // 1. Validate argc (expect maze file + optional [first|best])
+    // 2. Parse mode: default BACKTRACK_FIRST, "best" → BACKTRACK_BEST
+    // 3. srand(time(NULL))
+    // 4. maze_load(argv[1]) — exit on NULL
+    // 5. list_init(&backpack)
+    // 6. backtrack_run(maze, &backpack, mode)
+    // 7. Print final summary
+    // 8. list_free, maze_free
 }
 ```
 
-Final summary format (from README):
+Final summary format:
 ```
 === EXIT REACHED ===
 Total treasure value: 230 coins
@@ -201,7 +209,8 @@ main.c
   │     ├── structures/linked_list.c
   │     └── engine/renderer.c
   │           ├── maze/maze.c
-  │           └── structures/linked_list.c
+  │           ├── structures/linked_list.c
+  │           └── structures/stack.c     (for on_path[] lookup)
   └── structures/linked_list.c   (for final summary printing)
 ```
 

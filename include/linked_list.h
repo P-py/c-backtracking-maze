@@ -23,10 +23,11 @@ typedef struct {
     int size; /**< Current number of nodes. */
 } LinkedList;
 
-void list_init(LinkedList *l);
-void list_insert(LinkedList *l, int value);
-int list_remove_head(LinkedList *l);
-void list_print(const LinkedList *l);
-void list_free(LinkedList *l);
+void list_init        (LinkedList *l);
+void list_insert      (LinkedList *l, int value);
+int  list_remove_head (LinkedList *l);
+int  list_remove_value(LinkedList *l, int value); /* removes first occurrence; returns 1 if found */
+void list_print       (const LinkedList *l);
+void list_free        (LinkedList *l);
 
 #endif /* LINKED_LIST_H */

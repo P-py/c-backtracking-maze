@@ -12,9 +12,9 @@ graph TD
 
     maze["<b>maze/maze.c</b><br/>Loads file → flat grid array<br/>Validates cells, marks visited"]
 
-    backtrack["<b>engine/backtrack.c</b><br/>DFS search loop<br/>Drives all cell events"]
+    backtrack["<b>engine/backtrack.c</b><br/>DFS search — FIRST or BEST mode<br/>Drives all cell events + undo"]
 
-    renderer["<b>engine/renderer.c</b><br/>Prints maze + backpack<br/>Writes solution file"]
+    renderer["<b>engine/renderer.c</b><br/>Live trail display + backpack<br/>Prints/writes final solution"]
 
     stack["<b>structures/stack.c</b><br/>Fixed-array int stack<br/>Tracks current path"]
 
@@ -31,6 +31,7 @@ graph TD
 
     renderer   --> maze
     renderer   --> linked_list
+    renderer   --> stack
 ```
 
 **Key rule:** data structures (`stack`, `linked_list`) and `maze` have zero internal dependencies — they are the foundation. `backtrack` is the only module that orchestrates all the others. `main` only sets up and tears down.
@@ -45,11 +46,10 @@ graph LR
 
     maze_obj["Maze*<br/>(heap, via maze_load)"]
     backpack_obj["LinkedList<br/>(stack-allocated in main)"]
-    path_stack["Stack<br/>(stack-allocated in main<br/>passed to backtrack)"]
+    path_stack["Stack<br/>(stack-allocated in backtrack_run)"]
 
     main_owns -- "creates / frees" --> maze_obj
     main_owns -- "initialises"      --> backpack_obj
-    main_owns -- "initialises"      --> path_stack
 
     backtrack_uses["backtrack_run()"]
     backtrack_uses -. "reads & mutates" .-> maze_obj
@@ -59,11 +59,12 @@ graph LR
     renderer_uses["renderer_draw()"]
     renderer_uses -. "reads only"       .-> maze_obj
     renderer_uses -. "reads only"       .-> backpack_obj
+    renderer_uses -. "reads only"       .-> path_stack
 ```
 
 ## 3. Runtime Sequence
 
-What happens from `./maze mazes/maze_10x10.txt` to program exit.
+What happens from `./maze mazes/maze_10x10.txt first` to program exit.
 
 ```mermaid
 sequenceDiagram
@@ -78,12 +79,12 @@ sequenceDiagram
     Mz -->> M : Maze* (or NULL → exit)
 
     M  ->> LL : list_init(&backpack)
-    M  ->> BT : backtrack_run(maze, &backpack)
+    M  ->> BT : backtrack_run(maze, &backpack, mode)
 
     Note over BT: push player_pos, mark visited
 
     loop Each step of the search
-        BT ->> R  : renderer_draw(maze, current, backpack)
+        BT ->> R  : renderer_draw(maze, current, backpack, path)
         BT ->> Mz : maze_is_valid(neighbor) × 4 directions
 
         alt neighbor is valid
@@ -96,11 +97,13 @@ sequenceDiagram
             BT ->> Mz : mark neighbor visited
         else all directions exhausted (dead end)
             BT ->> St : stack_pop()
+            Note over BT: BEST mode also unmarks visited<br/>and calls undo_event
         end
     end
 
     alt Exit 'S' found
-        BT ->> R  : renderer_write_solution(path)
+        BT ->> R  : renderer_print_solution(path, maze)
+        BT ->> R  : renderer_write_solution(path, maze)
         BT -->> M : return 1
         M  ->> M  : print final summary
     else Stack empty — no solution
@@ -112,9 +115,9 @@ sequenceDiagram
     M ->> LL : list_free(&backpack)
 ```
 
-## 4. Backtracking Algorithm
+## 4. Backtracking Modes
 
-The core loop inside `backtrack_run`.
+### BACKTRACK_FIRST — Iterative DFS
 
 ```mermaid
 flowchart TD
@@ -122,11 +125,11 @@ flowchart TD
     INIT --> DRAW["renderer_draw — show current state"]
     DRAW --> EXIT_CHECK{Current cell == 'S'?}
 
-    EXIT_CHECK -->|Yes| WRITE["renderer_write_solution\nReturn 1 — SUCCESS"]
+    EXIT_CHECK -->|Yes| WRITE["renderer_print_solution\nrenderer_write_solution\nReturn 1 — SUCCESS"]
     WRITE --> END_OK([Done])
 
-    EXIT_CHECK -->|No| TRY["Try next direction\n↑ ↓ ← →"]
-    TRY --> VALID{Neighbor valid?\nnot wall, not visited,\nin bounds}
+    EXIT_CHECK -->|No| TRY["Try next direction ↑ ↓ ← →"]
+    TRY --> VALID{Neighbor valid?\nnot wall, not visited,\nin bounds, no wrap}
 
     VALID -->|Yes| EVENT{Cell type?}
     EVENT -->|'T' treasure| TREASURE["list_insert(rand value)\npush neighbor, mark visited"]
@@ -137,14 +140,39 @@ flowchart TD
     TRAP      --> DRAW
     MOVE      --> DRAW
 
-    VALID -->|No — tried all 4| DEAD_END{More directions\nleft to try?}
-    DEAD_END -->|Yes| TRY
-
-    DEAD_END -->|No| BACKTRACK["stack_pop — step back"]
-    BACKTRACK --> EMPTY{Stack empty?}
+    VALID -->|No — tried all 4| DEAD_END["stack_pop — step back"]
+    DEAD_END --> EMPTY{Stack empty?}
     EMPTY -->|Yes| NO_SOL(["Return 0 — NO SOLUTION"])
     EMPTY -->|No| DRAW
 ```
+
+### BACKTRACK_BEST — Recursive DFS with Undo
+
+Explores all paths. At each exit, compares total backpack value against the stored best. On backtrack, reverses cell events using a `CellEvent` array.
+
+```mermaid
+flowchart TD
+    START([explore called]) --> DRAW["renderer_draw"]
+    DRAW --> EXIT_CHECK{Current cell == 'S'?}
+
+    EXIT_CHECK -->|Yes| COMPARE["Sum backpack\nIf total > best.total: save path + backpack"]
+    COMPARE --> RETURN([return — keep exploring other paths])
+
+    EXIT_CHECK -->|No| LOOP["For each direction ↑ ↓ ← →"]
+    LOOP --> VALID{Neighbor valid?}
+
+    VALID -->|No| NEXT[Next direction]
+    NEXT --> LOOP
+
+    VALID -->|Yes| APPLY["apply_event → record in events[neighbor]\nmark visited, push"]
+    APPLY --> RECURSE["explore(neighbor) — recursive"]
+    RECURSE --> UNDO["pop, unmark visited\nundo_event:\n  T → list_remove_value(value)\n  A → list_insert(value)"]
+    UNDO --> NEXT
+
+    LOOP -->|All 4 tried| DONE([return])
+```
+
+After `explore` returns to `run_best`: restore winning path into caller's stack, rebuild backpack from saved values.
 
 ## 5. Data Structure Roles
 
@@ -158,7 +186,7 @@ Stores 1D cell indices. Top = current position.
 Pop = backtrack one step.
 ```
 
-The stack is never cleared mid-run; it accumulates the winning path when the exit is reached.
+`renderer_draw` uses the full stack contents to mark trail cells (`.`) on the display.
 
 ### LinkedList — the backpack
 
@@ -169,7 +197,11 @@ insert(40)   insert(15)   insert(75)   remove_head()   insert(60)
                                          (trap hit)
 ```
 
-Always sorted ascending so the **head is always the cheapest treasure** — the one sacrificed on a trap, minimising total loss. `list_insert` walks to the correct position; `list_remove_head` is O(1).
+Always sorted ascending so the **head is always the cheapest treasure** — the one sacrificed on a trap, minimising total loss.
+
+- `list_insert`: O(n) walk to correct position
+- `list_remove_head`: O(1) — always used by traps
+- `list_remove_value`: O(n) — used by best-path undo to reverse a treasure pickup
 
 ## 6. Maze Memory Layout
 
@@ -190,4 +222,4 @@ Direction offsets (cols = 5):
   RIGHT = +1
 ```
 
-Boundary check for LEFT/RIGHT must also verify the column doesn't wrap (e.g., index 5 going LEFT must not land on index 4 of the row above).
+**Column-wrap guard:** before moving LEFT, check `current % cols == 0`; before RIGHT, check `current % cols == cols - 1`. Without this, the algorithm would silently step from the end of one row to the start of the next.

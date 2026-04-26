@@ -46,6 +46,30 @@ int list_remove_head(LinkedList *l) {
     return value;
 }
 
+int list_remove_value(LinkedList *l, int value) {
+    if (!l->head) return 0;
+
+    /* Check head */
+    if (l->head->value == value) {
+        list_remove_head(l);
+        return 1;
+    }
+
+    /* Search rest of list */
+    Node *curr = l->head;
+    while (curr->next) {
+        if (curr->next->value == value) {
+            Node *tmp  = curr->next;
+            curr->next = tmp->next;
+            free(tmp);
+            l->size--;
+            return 1;
+        }
+        curr = curr->next;
+    }
+    return 0;
+}
+
 void list_print(const LinkedList *l) {
     printf("Backpack (%d): [", l->size);
     for (Node *curr = l->head; curr; curr = curr->next) {

@@ -46,7 +46,8 @@ test-visual: $(BUILD)/visual_test_maze $(BUILD)/visual_test_backpack
 	./$(BUILD)/visual_test_backpack
 
 $(BUILD)/visual_test_maze: tests/visual/visual_test_maze.c \
-                           $(BUILD)/maze.o $(BUILD)/renderer.o $(BUILD)/linked_list.o | $(BUILD)
+                           $(BUILD)/maze.o $(BUILD)/backtrack.o $(BUILD)/renderer.o \
+                           $(BUILD)/stack.o $(BUILD)/linked_list.o | $(BUILD)
 	$(CC) $(CFLAGS) $^ -o $@
 
 $(BUILD)/visual_test_backpack: tests/visual/visual_test_backpack.c \
