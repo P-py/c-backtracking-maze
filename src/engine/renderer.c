@@ -5,7 +5,7 @@
 #include <renderer.h>
 #include <defs.h>
 
-static unsigned int step_delay_us = 80000; /* 80 ms default */
+static unsigned int step_delay_us = 40000; /* 40 ms default */
 
 void renderer_set_delay(unsigned int delay_us) {
     step_delay_us = delay_us;

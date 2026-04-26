@@ -6,7 +6,7 @@
 #include <renderer.h>
 #include <defs.h>
 
-/* ── Shared helper ──────────────────────────────────────────────────────── */
+/* ── Shared helpers ─────────────────────────────────────────────────────── */
 
 static void apply_event(Maze *maze, int pos, LinkedList *backpack,
                         char *ev_type, int *ev_val) {
@@ -39,26 +39,64 @@ static void undo_event(LinkedList *backpack, char ev_type, int ev_val) {
 }
 
 static int is_wrap(int current, int d, int cols) {
-    if (d == 2 && current % cols == 0)        return 1; /* LEFT  from col 0        */
-    if (d == 3 && current % cols == cols - 1) return 1; /* RIGHT from last col     */
+    if (d == 2 && current % cols == 0)        return 1;
+    if (d == 3 && current % cols == cols - 1) return 1;
     return 0;
 }
 
-/* ── FIRST-PATH: iterative DFS, stop at first exit ──────────────────────── */
+/* ── Interactive helpers ─────────────────────────────────────────────────── */
 
-static int run_first(Maze *maze, LinkedList *backpack, Stack *path) {
+static void wait_enter(void) {
+    printf("  [Press Enter to continue]");
+    fflush(stdout);
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
+static void build_step_desc(char *buf, int bufsize,
+                             const char *prefix, int pos, int cols,
+                             char ev_type, int ev_val) {
+    int r = pos / cols, c = pos % cols;
+    if (ev_type == 'T')
+        snprintf(buf, bufsize, "%s (%d, %d)  —  Treasure found! +%d coins", prefix, r, c, ev_val);
+    else if (ev_type == 'A' && ev_val != -1)
+        snprintf(buf, bufsize, "%s (%d, %d)  —  Trap! Lost %d coins", prefix, r, c, ev_val);
+    else if (ev_type == 'A')
+        snprintf(buf, bufsize, "%s (%d, %d)  —  Trap! (backpack was empty)", prefix, r, c);
+    else
+        snprintf(buf, bufsize, "%s (%d, %d)", prefix, r, c);
+}
+
+/* ── FIRST-PATH: iterative DFS ──────────────────────────────────────────── */
+
+static int run_first(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode display) {
     int cols = maze->cols;
     int offsets[4] = {-cols, +cols, -1, +1};
 
+    char step_desc[128];
+    build_step_desc(step_desc, sizeof(step_desc),
+                    "Starting at", maze->player_pos, cols, 0, 0);
+
     while (!stack_is_empty(path)) {
         int current = stack_peek(path);
-        renderer_draw(maze, current, backpack, path);
+
+        if (display != DISPLAY_NONE)
+            renderer_draw(maze, current, backpack, path);
+
+        if (display == DISPLAY_INTERACTIVE) {
+            printf("  %s\n", step_desc);
+            if (maze_cell(maze, current) == CELL_EXIT)
+                printf("  Exit reached!\n");
+        }
 
         if (maze_cell(maze, current) == CELL_EXIT) {
+            if (display == DISPLAY_INTERACTIVE) wait_enter();
             renderer_print_solution(path, maze);
             renderer_write_solution(path, maze, backpack);
             return 1;
         }
+
+        if (display == DISPLAY_INTERACTIVE) wait_enter();
 
         int found = 0;
         for (int d = 0; d < 4; d++) {
@@ -71,15 +109,24 @@ static int run_first(Maze *maze, LinkedList *backpack, Stack *path) {
             maze->visited[next] = 1;
             stack_push(path, next);
             found = 1;
+            build_step_desc(step_desc, sizeof(step_desc),
+                            "Moved to", next, cols, ev_type, ev_val);
             break;
         }
 
-        if (!found) stack_pop(path);
+        if (!found) {
+            build_step_desc(step_desc, sizeof(step_desc),
+                            "Dead end at", current, cols, 0, 0);
+            /* append backtracking note */
+            int len = strlen(step_desc);
+            snprintf(step_desc + len, sizeof(step_desc) - len, "  —  Backtracking...");
+            stack_pop(path);
+        }
     }
     return 0;
 }
 
-/* ── BEST-PATH: recursive DFS with undo, tracks highest-value solution ───── */
+/* ── BEST-PATH: recursive DFS with undo ─────────────────────────────────── */
 
 typedef struct {
     Stack path;
@@ -89,30 +136,40 @@ typedef struct {
     int   found;
 } Solution;
 
-/* Per-cell event log (one entry per cell, reused across recursive branches). */
 typedef struct { char type; int value; } CellEvent;
 
 static void explore(Maze *maze, Stack *path, LinkedList *backpack,
-                    CellEvent *events, Solution *best) {
+                    CellEvent *events, Solution *best, DisplayMode display,
+                    const char *arrived_msg) {
     int current = stack_peek(path);
-    renderer_draw(maze, current, backpack, path);
+    int cols    = maze->cols;
+
+    if (display != DISPLAY_NONE)
+        renderer_draw(maze, current, backpack, path);
+
+    if (display == DISPLAY_INTERACTIVE) {
+        printf("  %s\n", arrived_msg);
+        wait_enter();
+    }
 
     if (maze_cell(maze, current) == CELL_EXIT) {
         int total = 0;
         for (Node *n = backpack->head; n; n = n->next) total += n->value;
 
         if (!best->found || total > best->total_value) {
-            best->found       = 1;
-            best->total_value = total;
-            best->path        = *path; /* copy */
+            best->found         = 1;
+            best->total_value   = total;
+            best->path          = *path;
             best->backpack_size = 0;
             for (Node *n = backpack->head; n; n = n->next)
                 best->backpack_values[best->backpack_size++] = n->value;
         }
+
+        if (display == DISPLAY_INTERACTIVE)
+            printf("  Exit! Total so far: %d coins. Searching for better paths...\n", total);
         return;
     }
 
-    int cols = maze->cols;
     int offsets[4] = {-cols, +cols, -1, +1};
 
     for (int d = 0; d < 4; d++) {
@@ -124,29 +181,44 @@ static void explore(Maze *maze, Stack *path, LinkedList *backpack,
         maze->visited[next] = 1;
         stack_push(path, next);
 
-        explore(maze, path, backpack, events, best);
+        char msg[128];
+        build_step_desc(msg, sizeof(msg),
+                        "Moved to", next, cols,
+                        events[next].type, events[next].value);
+
+        explore(maze, path, backpack, events, best, display, msg);
 
         stack_pop(path);
         maze->visited[next] = 0;
         undo_event(backpack, events[next].type, events[next].value);
+
+        if (display == DISPLAY_INTERACTIVE) {
+            char back_msg[128];
+            build_step_desc(back_msg, sizeof(back_msg),
+                            "Backtracked to", current, cols, 0, 0);
+            printf("  %s\n", back_msg);
+        }
     }
 }
 
-static int run_best(Maze *maze, LinkedList *backpack, Stack *path) {
+static int run_best(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode display) {
     CellEvent events[MAX_CELLS];
     memset(events, 0, sizeof(events));
 
     Solution best;
     memset(&best, 0, sizeof(best));
 
-    explore(maze, path, backpack, events, &best);
+    char start_msg[64];
+    snprintf(start_msg, sizeof(start_msg),
+             "Starting at (%d, %d)",
+             maze->player_pos / maze->cols,
+             maze->player_pos % maze->cols);
+
+    explore(maze, path, backpack, events, &best, display, start_msg);
 
     if (!best.found) return 0;
 
-    /* Restore winning path into caller's stack */
     *path = best.path;
-
-    /* Rebuild backpack with winning haul */
     list_free(backpack);
     list_init(backpack);
     for (int i = 0; i < best.backpack_size; i++)
@@ -159,13 +231,16 @@ static int run_best(Maze *maze, LinkedList *backpack, Stack *path) {
 
 /* ── Public entry point ─────────────────────────────────────────────────── */
 
-int backtrack_run(Maze *maze, LinkedList *backpack, BacktrackMode mode) {
+int backtrack_run(Maze *maze, LinkedList *backpack, BacktrackMode mode, DisplayMode display) {
+    if (display == DISPLAY_INTERACTIVE)
+        renderer_set_delay(0);
+
     Stack path;
     stack_init(&path);
     stack_push(&path, maze->player_pos);
     maze->visited[maze->player_pos] = 1;
 
     if (mode == BACKTRACK_BEST)
-        return run_best(maze, backpack, &path);
-    return run_first(maze, backpack, &path);
+        return run_best(maze, backpack, &path, display);
+    return run_first(maze, backpack, &path, display);
 }

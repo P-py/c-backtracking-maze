@@ -19,6 +19,12 @@ typedef enum {
     BACKTRACK_BEST       /* explore all paths; keep the highest-value haul  */
 } BacktrackMode;
 
-int backtrack_run(Maze *maze, LinkedList *backpack, BacktrackMode mode);
+typedef enum {
+    DISPLAY_AUTO = 0,    /* animated, 80 ms per step                       */
+    DISPLAY_INTERACTIVE, /* step-by-step, waits for Enter, prints events   */
+    DISPLAY_NONE         /* no rendering, final result only                */
+} DisplayMode;
+
+int backtrack_run(Maze *maze, LinkedList *backpack, BacktrackMode mode, DisplayMode display);
 
 #endif /* BACKTRACK_H */

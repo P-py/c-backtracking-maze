@@ -27,7 +27,7 @@ int main(int argc, char *argv[]) {
     LinkedList backpack;
     list_init(&backpack);
 
-    int found = backtrack_run(m, &backpack, mode);
+    int found = backtrack_run(m, &backpack, mode, DISPLAY_AUTO);
 
     if (found) {
         int total = 0;
