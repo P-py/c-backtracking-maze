@@ -2,6 +2,8 @@
 
 Visual overview of how the modules interact and what each one is responsible for.
 
+> For the search optimizations applied to `BACKTRACK_BEST` (reachability pre-computation and branch and bound), see [`optimizations.md`](optimizations.md).
+
 ## 1. Module Dependency Map
 
 Who knows about whom at compile time. Arrows mean "depends on / includes".

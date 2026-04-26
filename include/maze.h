@@ -14,18 +14,22 @@
 #include "defs.h"
 
 typedef struct {
-    char cells [MAX_CELLS]; /**< Raw cell characters from the input file. */
-    char visited[MAX_CELLS]; /**< 0 = unvisited, 1 = visited. */
+    char cells          [MAX_CELLS]; /**< Raw cell characters from the input file. */
+    char visited        [MAX_CELLS]; /**< 0 = unvisited, 1 = visited. */
+    char reachable      [MAX_CELLS]; /**< 1 if cell can reach the exit (BFS from exit). */
+    int  treasure_values[MAX_CELLS]; /**< Pre-assigned coin value for each CELL_TREASURE. */
     int rows;
     int cols;
     int player_pos; /**< 1D index of the 'P' cell. */
-    int exit_pos; /**< 1D index of the 'S' cell. */
+    int exit_pos;   /**< 1D index of the 'S' cell. */
 } Maze;
 
-Maze *maze_load(const char *filepath);
-void maze_free(Maze *m);
-int maze_index(const Maze *m, int row, int col);
-int maze_is_valid(const Maze *m, int pos);
-char maze_cell(const Maze *m, int pos);
+Maze *maze_load             (const char *filepath);
+void  maze_free             (Maze *m);
+int   maze_index            (const Maze *m, int row, int col);
+int   maze_is_valid         (const Maze *m, int pos);
+char  maze_cell             (const Maze *m, int pos);
+void  maze_compute_reachability(Maze *m);   /**< BFS from exit; fills reachable[]. */
+void  maze_assign_treasures    (Maze *m);   /**< Pre-assigns random values to T cells. */
 
 #endif /* MAZE_H */

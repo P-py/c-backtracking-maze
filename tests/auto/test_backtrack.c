@@ -14,8 +14,10 @@ static int failures = 0;
 
 static Maze make_maze(const char *grid, int cols, int rows) {
     Maze m;
-    memset(m.cells,   CELL_WALL, sizeof(m.cells));
-    memset(m.visited, 0,         sizeof(m.visited));
+    memset(m.cells,           CELL_WALL, sizeof(m.cells));
+    memset(m.visited,         0,         sizeof(m.visited));
+    memset(m.reachable,       0,         sizeof(m.reachable));
+    memset(m.treasure_values, 0,         sizeof(m.treasure_values));
     m.rows       = rows;
     m.cols       = cols;
     m.player_pos = -1;
@@ -25,6 +27,8 @@ static Maze make_maze(const char *grid, int cols, int rows) {
         if (grid[i] == CELL_PLAYER) m.player_pos = i;
         if (grid[i] == CELL_EXIT)   m.exit_pos   = i;
     }
+    maze_compute_reachability(&m);
+    maze_assign_treasures(&m);
     return m;
 }
 

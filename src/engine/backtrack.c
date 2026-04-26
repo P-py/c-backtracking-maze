@@ -15,7 +15,7 @@ static void apply_event(Maze *maze, int pos, LinkedList *backpack,
     *ev_val  = 0;
 
     if (cell == CELL_TREASURE) {
-        int v    = (rand() % 100) + 1;
+        int v    = maze->treasure_values[pos]; /* pre-assigned at maze load */
         *ev_type = 'T';
         *ev_val  = v;
         list_insert(backpack, v);
@@ -100,9 +100,10 @@ static int run_first(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode 
 
         int found = 0;
         for (int d = 0; d < 4; d++) {
-            if (is_wrap(current, d, cols)) continue;
+            if (is_wrap(current, d, cols))   continue;
             int next = current + offsets[d];
-            if (!maze_is_valid(maze, next)) continue;
+            if (!maze_is_valid(maze, next))  continue;
+            if (!maze->reachable[next])      continue; /* reachability pruning */
 
             char ev_type; int ev_val;
             apply_event(maze, next, backpack, &ev_type, &ev_val);
@@ -117,7 +118,6 @@ static int run_first(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode 
         if (!found) {
             build_step_desc(step_desc, sizeof(step_desc),
                             "Dead end at", current, cols, 0, 0);
-            /* append backtracking note */
             int len = strlen(step_desc);
             snprintf(step_desc + len, sizeof(step_desc) - len, "  —  Backtracking...");
             stack_pop(path);
@@ -126,7 +126,7 @@ static int run_first(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode 
     return 0;
 }
 
-/* ── BEST-PATH: recursive DFS with undo ─────────────────────────────────── */
+/* ── BEST-PATH: recursive DFS with undo + branch-and-bound ──────────────── */
 
 typedef struct {
     Stack path;
@@ -140,7 +140,13 @@ typedef struct { char type; int value; } CellEvent;
 
 static void explore(Maze *maze, Stack *path, LinkedList *backpack,
                     CellEvent *events, Solution *best, DisplayMode display,
-                    const char *arrived_msg) {
+                    const char *arrived_msg,
+                    int remaining_treasure, int current_total) {
+    /* Branch-and-bound: prune if even collecting all remaining treasure
+       can't beat the best solution found so far.                         */
+    if (best->found && current_total + remaining_treasure <= best->total_value)
+        return;
+
     int current = stack_peek(path);
     int cols    = maze->cols;
 
@@ -153,12 +159,9 @@ static void explore(Maze *maze, Stack *path, LinkedList *backpack,
     }
 
     if (maze_cell(maze, current) == CELL_EXIT) {
-        int total = 0;
-        for (Node *n = backpack->head; n; n = n->next) total += n->value;
-
-        if (!best->found || total > best->total_value) {
+        if (!best->found || current_total > best->total_value) {
             best->found         = 1;
-            best->total_value   = total;
+            best->total_value   = current_total;
             best->path          = *path;
             best->backpack_size = 0;
             for (Node *n = backpack->head; n; n = n->next)
@@ -166,31 +169,44 @@ static void explore(Maze *maze, Stack *path, LinkedList *backpack,
         }
 
         if (display == DISPLAY_INTERACTIVE)
-            printf("  Exit! Total so far: %d coins. Searching for better paths...\n", total);
+            printf("  Exit! Total so far: %d coins. Searching for better paths...\n",
+                   current_total);
         return;
     }
 
     int offsets[4] = {-cols, +cols, -1, +1};
 
     for (int d = 0; d < 4; d++) {
-        if (is_wrap(current, d, cols)) continue;
+        if (is_wrap(current, d, cols))   continue;
         int next = current + offsets[d];
-        if (!maze_is_valid(maze, next)) continue;
+        if (!maze_is_valid(maze, next))  continue;
+        if (!maze->reachable[next])      continue; /* reachability pruning */
 
         apply_event(maze, next, backpack, &events[next].type, &events[next].value);
         maze->visited[next] = 1;
         stack_push(path, next);
 
-        char msg[128];
-        build_step_desc(msg, sizeof(msg),
-                        "Moved to", next, cols,
-                        events[next].type, events[next].value);
+        /* Update totals for the recursive call */
+        int new_remaining = remaining_treasure;
+        int new_total     = current_total;
+        char ev_type = events[next].type;
+        int  ev_val  = events[next].value;
+        if (ev_type == 'T') {
+            new_remaining -= ev_val;
+            new_total     += ev_val;
+        } else if (ev_type == 'A' && ev_val != -1) {
+            new_total -= ev_val;
+        }
 
-        explore(maze, path, backpack, events, best, display, msg);
+        char msg[128];
+        build_step_desc(msg, sizeof(msg), "Moved to", next, cols, ev_type, ev_val);
+
+        explore(maze, path, backpack, events, best, display, msg,
+                new_remaining, new_total);
 
         stack_pop(path);
         maze->visited[next] = 0;
-        undo_event(backpack, events[next].type, events[next].value);
+        undo_event(backpack, ev_type, ev_val);
 
         if (display == DISPLAY_INTERACTIVE) {
             char back_msg[128];
@@ -208,13 +224,19 @@ static int run_best(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode d
     Solution best;
     memset(&best, 0, sizeof(best));
 
+    /* Sum all pre-assigned treasure values as the initial upper bound */
+    int total_treasure = 0;
+    for (int i = 0; i < maze->rows * maze->cols; i++)
+        total_treasure += maze->treasure_values[i];
+
     char start_msg[64];
     snprintf(start_msg, sizeof(start_msg),
              "Starting at (%d, %d)",
              maze->player_pos / maze->cols,
              maze->player_pos % maze->cols);
 
-    explore(maze, path, backpack, events, &best, display, start_msg);
+    explore(maze, path, backpack, events, &best, display,
+            start_msg, total_treasure, 0);
 
     if (!best.found) return 0;
 
