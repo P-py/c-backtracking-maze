@@ -1,0 +1,181 @@
+# C Coding Patterns
+
+Conventions used across this project.
+
+## File Organization
+
+Every module is a pair of files:
+- `module.h` — public interface: includes, constants, type definitions, function prototypes only. Include only what the header itself directly uses (`<stddef.h>` for `size_t`, not the whole `<stdlib.h>`).
+- `module.c` — implementation: includes its own header first, then any others it needs.
+
+Header guard format (macro name = filename in `UPPER_SNAKE_CASE`, `.` → `_`):
+```c
+#ifndef MODULE_NAME_H
+#define MODULE_NAME_H
+
+// ...
+
+#endif /* MODULE_NAME_H */
+```
+
+File-level doc block at the top of every header:
+```c
+/**
+ * @file stack.h
+ * @brief Fixed-capacity integer stack used by the backtracking engine.
+ *
+ * All pop/peek operations must only be called on a non-empty stack.
+ * Check stack_is_empty() first.
+ */
+```
+
+## Naming
+
+| Kind | Convention | Example |
+|---|---|---|
+| Types | `PascalCase` | `Stack`, `Node`, `Maze` |
+| Functions | `module_verb[_noun]` | `stack_push`, `maze_load`, `list_insert` |
+| Parameters / locals | `lower_snake_case` | `cell_count`, `head_node`, `index` |
+| Constants / macros | `UPPER_SNAKE_CASE` | `MAX_MAZE_SIZE`, `CELL_WALL` |
+
+The `module_` prefix on every function acts as a namespace — C has no namespaces, so without it a `push` in one module would collide with a `push` in another.
+
+## Struct Patterns
+
+Non-self-referential:
+```c
+typedef struct {
+    int  rows;
+    int  cols;
+    char cells[MAX_CELLS];   /**< Row-major flattened grid. */
+} Maze;
+```
+
+Self-referential (node contains pointer to its own type):
+```c
+typedef struct Node {
+    int          value;
+    struct Node *next;  /* typedef alias not yet available inside the body */
+} Node;
+```
+
+Inline member documentation uses `/**< ... */` (note the `<`), which Doxygen attaches to the member on its left rather than to the element below:
+```c
+typedef struct {
+    Node  *head; /**< First node, or NULL when empty. */
+    int    size; /**< Current number of nodes.        */
+} LinkedList;
+```
+
+## Constants
+
+Defined in the header of the module that owns them:
+```c
+#define MAX_MAZE_SIZE  40
+#define MAX_CELLS      (MAX_MAZE_SIZE * MAX_MAZE_SIZE)
+
+#define CELL_WALL      '#'
+#define CELL_CORRIDOR  ' '
+#define CELL_PLAYER    'P'
+#define CELL_TREASURE  'T'
+#define CELL_TRAP      'A'
+#define CELL_EXIT      'S'
+```
+
+## Return Conventions
+
+Three patterns depending on what a function does:
+
+**Status functions** return `int` — `1` on success/true, `0` on failure/false:
+```c
+int stack_is_empty(const Stack *s);
+int list_insert(LinkedList *l, int value);  /* 0 if malloc fails */
+```
+
+**Pop / peek functions** return the value directly. Caller must check emptiness first — there is no sentinel that reliably signals "empty" when valid values include `0` and `-1`:
+```c
+int stack_pop(Stack *s);            /* call only when non-empty */
+int list_remove_head(LinkedList *l); /* call only when non-empty */
+```
+
+**Fallible removal** (e.g., remove by index) uses an output parameter and returns status:
+```c
+int list_remove_at(LinkedList *l, size_t index, int *out);
+/* *out receives the removed value; returns 0 if index out of range */
+```
+
+## `const` Correctness
+
+Add `const` to every pointer parameter the function does not modify. This is machine-checked documentation:
+```c
+/* Read-only — takes const */
+int  stack_is_empty  (const Stack *s);
+int  stack_peek      (const Stack *s);
+void list_print      (const LinkedList *l);
+
+/* Mutating — no const */
+void stack_push      (Stack *s, int value);
+int  list_remove_head(LinkedList *l);
+```
+
+## `size_t` for Sizes and Indices
+
+Use `size_t` (from `<stddef.h>`) for counts, sizes, and index parameters — it is unsigned and matches the platform's address space, eliminating signed/unsigned comparison warnings:
+```c
+size_t list_size(const LinkedList *l);
+int    list_remove_at(LinkedList *l, size_t index, int *out);
+```
+
+## Memory Management
+
+- Node allocation/deallocation is handled entirely inside `linked_list.c`; callers never touch raw `Node` pointers.
+- `Maze` is heap-allocated by `maze_load` and freed by `maze_free` — caller owns it.
+- Always check `malloc`:
+```c
+Node *node = malloc(sizeof(Node));
+if (!node) {
+    fprintf(stderr, "malloc failed\n");
+    exit(EXIT_FAILURE);
+}
+```
+
+## Error Handling
+
+- Functions that open files print to `stderr` and return `NULL` or `0`:
+```c
+FILE *f = fopen(path, "r");
+if (!f) {
+    fprintf(stderr, "Error: cannot open maze file '%s'\n", path);
+    return NULL;
+}
+```
+- Functions receiving invalid arguments from internal callers may assert or fail silently — internal callers are trusted.
+- All user-facing messages go to `stderr`; normal program output goes to `stdout`.
+
+## Function Signatures
+
+Pass structs by pointer, never by value:
+```c
+void backtrack_run(Maze *maze, Stack *path, LinkedList *backpack);
+```
+
+Prefer returning a result directly over writing to a global. Use output parameters only when a function genuinely needs to return two things:
+```c
+int stack_pop(Stack *s);                        /* good */
+void stack_pop(Stack *s, int *out_value);       /* avoid unless two returns are needed */
+```
+
+## Doxygen Function Comments
+
+```c
+/**
+ * @brief Insert @p value into the list in ascending sorted order.
+ *
+ * @param l     Target list (must not be NULL).
+ * @param value Value to insert.
+ * @return 1 on success, 0 if memory allocation failed.
+ */
+int list_insert(LinkedList *l, int value);
+```
+
+Key tags: `@brief` (one-line summary), `@param name` (one per parameter), `@return` (what and when), `@note` (non-obvious constraint), `@p name` / `@c token` (monospace in prose).

@@ -1,0 +1,15 @@
+# Build artifacts
+build/
+maze
+
+# Generated output
+output/solution.txt
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# MCP files
+CLAUDE.md
