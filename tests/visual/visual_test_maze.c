@@ -1,6 +1,6 @@
 #include <stdio.h>
-#include "maze/maze.h"
-#include "engine/renderer.h"
+#include <maze.h>
+#include <renderer.h>
 
 int main(int argc, char *argv[]) {
     (void)argc;

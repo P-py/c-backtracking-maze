@@ -11,8 +11,8 @@
 #ifndef BACKTRACK_H
 #define BACKTRACK_H
 
-#include "maze/maze.h"
-#include "structures/linked_list.h"
+#include <maze.h>
+#include <linked_list.h>
 
 int backtrack_run(Maze *maze, LinkedList *backpack);
 

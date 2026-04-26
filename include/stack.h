@@ -10,7 +10,7 @@
 #ifndef STACK_H
 #define STACK_H
 
-#include "defs.h"
+#include <defs.h>
 
 typedef struct {
     int data[MAX_CELLS]; /**< Storage array; capacity = MAX_CELLS. */

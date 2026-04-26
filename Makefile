@@ -1,5 +1,5 @@
 CC     = gcc
-CFLAGS = -Wall -Wextra -g -Isrc -MMD -MP
+CFLAGS = -Wall -Wextra -g -Isrc -MMD -MP -Iinclude
 BUILD  = build
 
 # Main objects

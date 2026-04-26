@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "engine/backtrack.h"
+#include <backtrack.h>
 
 int main(void) {
     printf("test_backtrack: stub\n");

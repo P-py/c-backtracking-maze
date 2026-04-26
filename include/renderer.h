@@ -10,9 +10,9 @@
 #ifndef RENDERER_H
 #define RENDERER_H
 
-#include "maze/maze.h"
-#include "structures/linked_list.h"
-#include "structures/stack.h"
+#include <maze.h>
+#include <linked_list.h>
+#include <stack.h>
 
 void renderer_draw (const Maze *m, int current_pos, const LinkedList *backpack);
 void renderer_write_solution (const Stack *path, const Maze *m);

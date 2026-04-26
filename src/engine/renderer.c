@@ -1,4 +1,4 @@
-#include "engine/renderer.h"
+#include <renderer.h>
 
 void renderer_draw(const Maze *m, int current_pos, const LinkedList *backpack) {
     (void)m;
