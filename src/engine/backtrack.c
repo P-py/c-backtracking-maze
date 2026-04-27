@@ -111,15 +111,14 @@ static void build_step_desc(char *buf, int bufsize,
 typedef struct { char type; int value; } CellEvent;
 
 /**
- * @brief Iterative DFS; returns 1 at the first path that reaches the exit.
+ * @brief BFS from player_pos; returns 1 on the shortest path to the exit.
  *
- * Iterative (not recursive) because we stop immediately on the first exit.
- * Cell events are undone on backtrack so the backpack reflects exactly the
- * cells that appear on the final solution path.
+ * BFS guarantees the fewest steps to the exit. After finding the path via
+ * parent pointers, it walks forward applying events — no backtracking needed.
  *
  * @param maze     Source maze; visited[] is mutated.
  * @param backpack Player's backpack; modified by events along the path.
- * @param path     Stack pre-loaded with player_pos.
+ * @param path     Stack rebuilt to the shortest player_pos → exit path.
  * @param display  Rendering mode.
  * @return         1 if the exit was reached, 0 if no solution exists.
  */
@@ -127,64 +126,77 @@ static int run_first(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode 
     int cols = maze->cols;
     int offsets[4] = {-cols, +cols, -1, +1};
 
-    /* Track what happened when we entered each cell so we can undo it on
-     * backtrack, keeping the backpack in sync with the current path. */
-    CellEvent events[MAX_CELLS];
-    memset(events, 0, sizeof(events));
+    /* BFS: parent[i] = cell we came from to reach i. -1 = not yet visited.
+     * parent[start] = start is the sentinel for the source node. */
+    int parent[MAX_CELLS];
+    memset(parent, -1, sizeof(parent));
 
-    char step_desc[128];
-    build_step_desc(step_desc, sizeof(step_desc),
-                    "Starting at", maze->player_pos, cols, 0, 0);
+    int bfs_q[MAX_CELLS];
+    int head = 0, tail = 0;
 
-    while (!stack_is_empty(path)) {
-        int current = stack_peek(path);
+    int start = maze->player_pos;
+    parent[start] = start;
+    bfs_q[tail++] = start;
 
-        if (display != DISPLAY_NONE)
-            renderer_draw(maze, current, backpack, path);
-
-        if (display == DISPLAY_INTERACTIVE) {
-            printf("  %s\n", step_desc);
-            if (maze_cell(maze, current) == CELL_EXIT)
-                printf("  Exit reached!\n");
+    int exit_pos = -1;
+    while (head < tail) {
+        int curr = bfs_q[head++];
+        if (maze_cell(maze, curr) == CELL_EXIT) {
+            exit_pos = curr;
+            break;
         }
-
-        if (maze_cell(maze, current) == CELL_EXIT) {
-            if (display == DISPLAY_INTERACTIVE) wait_enter();
-            renderer_print_solution(path, maze);
-            renderer_write_solution(path, maze, backpack);
-            return 1;
-        }
-
-        if (display == DISPLAY_INTERACTIVE) wait_enter();
-
-        int found = 0;
         for (int d = 0; d < 4; d++) {
-            if (is_wrap(current, d, cols))   continue;
-            int next = current + offsets[d];
-            if (!maze_is_valid(maze, next))  continue;
-            if (!maze->reachable[next])      continue; /* skip dead-end cells */
-
-            apply_event(maze, next, backpack, &events[next].type, &events[next].value);
-            maze->visited[next] = 1;
-            stack_push(path, next);
-            found = 1;
-            build_step_desc(step_desc, sizeof(step_desc),
-                            "Moved to", next, cols, events[next].type, events[next].value);
-            break; /* commit to the first valid neighbor; backtrack later if needed */
-        }
-
-        if (!found) {
-            build_step_desc(step_desc, sizeof(step_desc),
-                            "Dead end at", current, cols, 0, 0);
-            int len = strlen(step_desc);
-            snprintf(step_desc + len, sizeof(step_desc) - len, "  —  Backtracking...");
-            int popped = stack_pop(path);
-            /* Undo the event so the backpack reflects only cells still on the path.
-             * visited stays 1 — once explored, a cell is never re-entered. */
-            undo_event(backpack, events[popped].type, events[popped].value);
+            if (is_wrap(curr, d, cols))               continue;
+            int next = curr + offsets[d];
+            if (next < 0 || next >= maze->rows * cols) continue;
+            if (maze->cells[next] == CELL_WALL)        continue;
+            if (!maze->reachable[next])                continue;
+            if (parent[next] != -1)                    continue; /* already seen */
+            parent[next] = curr;
+            bfs_q[tail++] = next;
         }
     }
-    return 0;
+
+    if (exit_pos == -1) return 0;
+
+    /* Reconstruct: walk parent pointers from exit back to start. */
+    int path_buf[MAX_CELLS], path_len = 0;
+    for (int c = exit_pos; c != start; c = parent[c])
+        path_buf[path_len++] = c;
+    path_buf[path_len++] = start;
+    /* path_buf[0] = exit … path_buf[path_len-1] = start */
+
+    /* Walk forward (start → exit): push each cell, apply event, optionally draw. */
+    CellEvent events[MAX_CELLS];
+    memset(events, 0, sizeof(events));
+    stack_init(path);
+
+    for (int i = path_len - 1; i >= 0; i--) {
+        int pos = path_buf[i];
+        stack_push(path, pos);
+        maze->visited[pos] = 1;
+
+        if (i < path_len - 1) /* start cell has no entry event */
+            apply_event(maze, pos, backpack, &events[pos].type, &events[pos].value);
+
+        if (display != DISPLAY_NONE)
+            renderer_draw(maze, pos, backpack, path);
+
+        if (display == DISPLAY_INTERACTIVE) {
+            char desc[128];
+            const char *verb = (i == path_len - 1) ? "Starting at" : "Moved to";
+            build_step_desc(desc, sizeof(desc), verb, pos, cols,
+                            events[pos].type, events[pos].value);
+            printf("  %s\n", desc);
+            if (maze_cell(maze, pos) == CELL_EXIT)
+                printf("  Exit reached!\n");
+            wait_enter();
+        }
+    }
+
+    renderer_print_solution(path, maze);
+    renderer_write_solution(path, maze, backpack);
+    return 1;
 }
 
 typedef struct {
@@ -253,11 +265,34 @@ static void explore(Maze *maze, Stack *path, LinkedList *backpack,
 
     int offsets[4] = {-cols, +cols, -1, +1};
 
+    /* Collect valid neighbours, then sort descending by treasure value.
+     * Exploring the richest cell first finds a strong solution sooner,
+     * so the branch-and-bound bound tightens earlier and prunes more. */
+    struct { int pos; int treasure; } nbrs[4];
+    int nbr_count = 0;
     for (int d = 0; d < 4; d++) {
-        if (is_wrap(current, d, cols))   continue;
+        if (is_wrap(current, d, cols))  continue;
         int next = current + offsets[d];
-        if (!maze_is_valid(maze, next))  continue;
-        if (!maze->reachable[next])      continue;
+        if (!maze_is_valid(maze, next)) continue;
+        if (!maze->reachable[next])     continue;
+        nbrs[nbr_count].pos      = next;
+        nbrs[nbr_count].treasure = maze->treasure_values[next];
+        nbr_count++;
+    }
+    /* Insertion sort on ≤4 elements, descending by treasure. */
+    for (int i = 1; i < nbr_count; i++) {
+        int key_pos = nbrs[i].pos, key_treasure = nbrs[i].treasure;
+        int j = i - 1;
+        while (j >= 0 && nbrs[j].treasure < key_treasure) {
+            nbrs[j + 1] = nbrs[j];
+            j--;
+        }
+        nbrs[j + 1].pos      = key_pos;
+        nbrs[j + 1].treasure = key_treasure;
+    }
+
+    for (int i = 0; i < nbr_count; i++) {
+        int next = nbrs[i].pos;
 
         apply_event(maze, next, backpack, &events[next].type, &events[next].value);
         maze->visited[next] = 1;
