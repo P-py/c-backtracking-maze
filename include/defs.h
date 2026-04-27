@@ -6,9 +6,6 @@
 #ifndef DEFS_H
 #define DEFS_H
 
-#define MAX_MAZE_SIZE 40                              /**< Maximum grid dimension (rows or columns). */
-#define MAX_CELLS     (MAX_MAZE_SIZE * MAX_MAZE_SIZE) /**< Maximum flat 1D array size. */
-
 #define CELL_WALL     '#'  /**< Impassable wall. */
 #define CELL_CORRIDOR ' '  /**< Open passable corridor. */
 #define CELL_PLAYER   'P'  /**< Player starting position. */

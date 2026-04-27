@@ -32,7 +32,7 @@ Column-wrap guard applies: LEFT from column 0 and RIGHT from the last column are
 
 ### Where it runs
 
-`maze_compute_reachability(Maze *m)` — called once at the end of `maze_load`. Result is stored in `m->reachable[MAX_CELLS]`.
+`maze_compute_reachability(Maze *m)` — called once at the end of `maze_load`. Result is stored in `m->reachable[]` (heap-allocated to `rows * cols` at load time). The BFS queue is also heap-allocated to `rows * cols` for the same reason.
 
 During DFS, one extra guard is added to every direction loop:
 
@@ -190,7 +190,7 @@ flowchart LR
 
 For a maze with N passable cells, the number of simple paths explored by an unoptimized DFS is bounded by the number of **self-avoiding walks** on a 2D square lattice: approximately μ^N where μ ≈ 2.638 (the connective constant for the square lattice [5]). In practice, walls and the maze structure reduce this significantly — the real bound is closer to 3^B where B is the number of **branch points** (cells with 3 or more open neighbors), since each branch point is where the DFS forks [3].
 
-Each maze's characteristics:
+Each maze's characteristics (the solver now supports any size; the bundled named mazes are kept as convenient benchmarks):
 
 | Maze | Grid | Total cells | Walls | Passable (N) | Treasures | Traps |
 |---|---|---|---|---|---|---|
@@ -200,6 +200,8 @@ Each maze's characteristics:
 | `maze_40x40.txt` | 40×40 | 1600 | 684 | 916 | 5 | 4 |
 
 Wall density (walls / total cells): 58%, 48%, 54%, 43% respectively. Higher wall density → fewer branch points → smaller search space.
+
+> **Note on size limits:** there are no fixed grid size limits. Arrays are heap-allocated to exactly `rows × cols` at load time. The stress-test script (`scripts/stress_test.py`) validates first-path mode on corridors up to 10 000 columns/rows and procedurally generated mazes up to 1001×1001 (≈1 M cells).
 
 ### Estimated Search Space and Time
 
@@ -216,7 +218,9 @@ Assumptions:
 | `maze_30x10.txt` | ~13 | ~1.6 million | < 1 s | < 500 ms | < 50 ms |
 | `maze_40x40.txt` | ~90 | ~10^43 | **not feasible** | **not feasible** | **minutes–hours** |
 
-> The 40×40 estimate deserves extra attention. 916 passable cells with ~43% open space means more branch points than a tight corridor maze. Even with both optimizations, best-path on a large, open maze is the hardest case: `remaining_treasure` stays high for longer (5 treasures across 916 cells), the B&B bound is loose until most treasures are found, and the reachable subgraph is large. Best-path on `maze_40x40.txt` is expected to be the longest-running case by far.
+> The 40×40 estimate illustrates the hard case for BEST mode. 916 passable cells with ~43% open space yields many branch points; `remaining_treasure` stays high until most treasures are found; the B&B bound is loose throughout. Best-path on `maze_40x40.txt` is expected to be the longest-running bundled case by far.
+>
+> For FIRST mode, the solver completes in well under a second on all bundled mazes and on procedurally generated mazes up to 1001×1001 (verified by `scripts/stress_test.py`). BEST mode complexity is governed by the number of branch points, not the grid size — a large open maze is slower than a large corridor maze regardless of dimensions.
 
 ### How Each Optimization Helps
 

@@ -14,10 +14,10 @@
 #include "defs.h"
 
 typedef struct {
-    char cells          [MAX_CELLS]; /**< Raw cell characters from the input file. */
-    char visited        [MAX_CELLS]; /**< 0 = unvisited, 1 = visited. */
-    char reachable      [MAX_CELLS]; /**< 1 if cell can reach the exit (BFS from exit). */
-    int  treasure_values[MAX_CELLS]; /**< Pre-assigned coin value for each CELL_TREASURE. */
+    char *cells;           /**< Heap-allocated flat array of raw cell characters. */
+    char *visited;         /**< Heap-allocated; 0 = unvisited, 1 = visited. */
+    char *reachable;       /**< Heap-allocated; 1 if cell can reach the exit (BFS from exit). */
+    int  *treasure_values; /**< Heap-allocated; pre-assigned coin value for each CELL_TREASURE. */
     int rows;
     int cols;
     int player_pos; /**< 1D index of the 'P' cell. */

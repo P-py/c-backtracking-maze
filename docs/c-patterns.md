@@ -28,8 +28,9 @@ File-level doc block at the top of every header:
 ```c
 /**
  * @file stack.h
- * @brief Fixed-capacity integer stack used by the backtracking engine.
+ * @brief Dynamic integer stack used by the backtracking engine.
  *
+ * Capacity grows automatically via realloc; call stack_free() when done.
  * All pop/peek operations must only be called on a non-empty stack.
  * Check stack_is_empty() first.
  */
@@ -48,12 +49,17 @@ The `module_` prefix on every function acts as a namespace — C has no namespac
 
 ## Struct Patterns
 
-Non-self-referential:
+Non-self-referential (fields are heap-allocated pointers; `maze_free` frees them):
 ```c
 typedef struct {
-    int  rows;
-    int  cols;
-    char cells[MAX_CELLS];   /**< Row-major flattened grid. */
+    char *cells;           /**< Heap-allocated flat grid, size rows*cols. */
+    char *visited;         /**< Heap-allocated; 0/1 per cell. */
+    char *reachable;       /**< Heap-allocated; set by BFS at load time. */
+    int  *treasure_values; /**< Heap-allocated; pre-assigned coin values. */
+    int   rows;
+    int   cols;
+    int   player_pos;
+    int   exit_pos;
 } Maze;
 ```
 
@@ -75,11 +81,8 @@ typedef struct {
 
 ## Constants
 
-Defined in the header of the module that owns them:
+Defined in the header of the module that owns them. Cell-type constants live in `defs.h`; `MAX_MAZE_SIZE` and `MAX_CELLS` were removed when the maze became fully dynamic (arrays are heap-allocated to `rows * cols` at load time):
 ```c
-#define MAX_MAZE_SIZE  40
-#define MAX_CELLS      (MAX_MAZE_SIZE * MAX_MAZE_SIZE)
-
 #define CELL_WALL      '#'
 #define CELL_CORRIDOR  ' '
 #define CELL_PLAYER    'P'
@@ -98,10 +101,10 @@ int stack_is_empty(const Stack *s);
 int list_remove_value(LinkedList *l, int value);  /* 1 if found, 0 if not */
 ```
 
-**Void mutators** that cannot fail (malloc failure calls `exit()`):
+**Void mutators** that cannot fail (malloc/realloc failure calls `exit()`):
 ```c
 void list_insert(LinkedList *l, int value);  /* exits on malloc failure */
-void stack_push(Stack *s, int value);        /* prints error and returns on overflow */
+void stack_push(Stack *s, int value);        /* reallocs capacity; exits on failure */
 ```
 
 **Pop / peek functions** return the value directly and `-1` on empty as a diagnostic sentinel:
@@ -132,7 +135,7 @@ Use `size_t` (from `<stddef.h>`) for counts, sizes, and index parameters — it 
 size_t count_passable_cells(const Maze *m);
 ```
 
-In this project, indices into the 1D maze array use plain `int` because offsets can be negative (direction arithmetic), and the grid is bounded by `MAX_CELLS` which fits in `int`.
+In this project, indices into the 1D maze array use plain `int` because offsets can be negative (direction arithmetic); the grid size is `rows * cols` which always fits in `int` for any realistic maze.
 
 ## Memory Management
 

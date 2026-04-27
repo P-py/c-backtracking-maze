@@ -37,8 +37,6 @@ def write_maze(name: str, grid: list[str], cols: int, rows: int) -> None:
     print(f"  wrote {path}  ({cols}x{rows})")
 
 
-# ── Hand-crafted mazes ────────────────────────────────────────────────────────
-
 def maze_straight_path():
     """Minimal 5×3 maze: P→→S, no events."""
     grid = [
@@ -123,24 +121,6 @@ def maze_no_solution():
     """P and S separated by a wall — no path exists."""
     grid = [
         "#######",
-        "#P ### #",
-        "#  ### #",
-        "#######",
-        "# S    #",
-        "#######",
-    ]
-    # Build as a clean 8-wide grid
-    grid = [
-        "########",
-        "#P #####",
-        "#  #   #",
-        "#### # #",
-        "#    S #",
-        "########",
-    ]
-    # Verify no path manually: column of walls between P region and S region
-    grid = [
-        "#######",
         "#P #  #",
         "#  #S #",
         "#######",
@@ -188,9 +168,6 @@ def maze_multi_treasure_trap():
         "#" * cols,
     ]
     write_maze("09_multi_treasure_trap", grid, cols, 3)
-
-
-# ── Procedural generator ──────────────────────────────────────────────────────
 
 def _carve(grid: list[list[str]], r: int, c: int, rows: int, cols: int,
            rng: random.Random) -> None:
@@ -298,8 +275,27 @@ def generate_maze(name: str, cols: int, rows: int,
 
     print(f"  WARNING: could not place all symbols for {name} after 20 attempts", file=sys.stderr)
 
+# Varying sizes/densities cycled across the random slots.
+_RANDOM_CONFIGS = [
+    dict(cols=11, rows=11, n_treasures=2, n_traps=1),   # small
+    dict(cols=15, rows=11, n_treasures=3, n_traps=2),   # medium-sparse
+    dict(cols=21, rows=15, n_treasures=5, n_traps=2),   # medium-dense
+    dict(cols=25, rows=19, n_treasures=6, n_traps=3),   # large
+    dict(cols=31, rows=21, n_treasures=8, n_traps=4),   # extra-large
+]
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+_N_RANDOM = 3   # how many random mazes to generate per run
+
+
+def _generate_random_batch(n: int = _N_RANDOM) -> None:
+    master_seed = random.randrange(2**32)
+    rng = random.Random(master_seed)
+    print(f"\n  [random batch seed={master_seed}]")
+    for i in range(n):
+        cfg  = _RANDOM_CONFIGS[i % len(_RANDOM_CONFIGS)]
+        seed = rng.randrange(2**32)
+        name = f"{13 + i:02d}_random_{cfg['cols']}x{cfg['rows']}"
+        generate_maze(name, seed=seed, **cfg)
 
 def main():
     print(f"Generating mazes → {os.path.abspath(OUTPUT_DIR)}/\n")
@@ -315,13 +311,16 @@ def main():
     maze_two_routes_treasure()
     maze_multi_treasure_trap()
 
-    # Procedurally generated mazes (cols×rows must both be odd)
+    # Procedurally generated mazes — fixed seeds, always the same output
     generate_maze("10_generated_medium", cols=15, rows=11,
                   n_treasures=2, n_traps=1, seed=42)
     generate_maze("11_generated_large",  cols=25, rows=15,
                   n_treasures=4, n_traps=2, seed=137)
     generate_maze("12_generated_dense",  cols=21, rows=21,
                   n_treasures=5, n_traps=3, seed=999)
+
+    # Random mazes — different every run
+    _generate_random_batch()
 
     print("\nDone. Run with:")
     print("  ./maze mazes/test/01_straight_path.txt")

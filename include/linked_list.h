@@ -4,7 +4,6 @@
  *
  * Always kept in ascending order so the head holds the lowest-value
  * treasure — the item sacrificed when the player steps on a trap.
- * list_remove_head() must only be called on a non-empty list.
  */
 
 #ifndef LINKED_LIST_H
@@ -42,7 +41,7 @@ void list_insert(LinkedList *l, int value);
 
 /**
  * @brief Remove and return the minimum-value node (the head).
- * @param l  Non-empty list.
+ * @param l  Target list.
  * @return   The removed value, or -1 if the list is empty.
  */
 int list_remove_head(LinkedList *l);
