@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <backtrack.h>
 #include <stack.h>
@@ -25,7 +26,7 @@ static void apply_event(Maze *maze, int pos, LinkedList *backpack,
     *ev_val  = 0;
 
     if (cell == CELL_TREASURE) {
-        int v    = maze->treasure_values[pos]; /* pre-assigned at maze load */
+        int v    = (*maze).treasure_values[pos]; /* pre-assigned at maze load */
         *ev_type = 'T';
         *ev_val  = v;
         list_insert(backpack, v);
@@ -124,18 +125,23 @@ typedef struct { char type; int value; } CellEvent;
  * @return         1 if the exit was reached, 0 if no solution exists.
  */
 static int run_first(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode display) {
-    int cols = maze->cols;
+    int n_cells = (*maze).rows * (*maze).cols;
+    int cols    = (*maze).cols;
     int offsets[4] = {-cols, +cols, -1, +1};
 
     /* Track what happened when we entered each cell so we can undo it on
      * backtrack, keeping the backpack in sync with the current path. */
-    CellEvent events[MAX_CELLS];
-    memset(events, 0, sizeof(events));
+    CellEvent *events = calloc(n_cells, sizeof(CellEvent));
+    if (!events) {
+        fprintf(stderr, "malloc failed\n");
+        return 0;
+    }
 
     char step_desc[128];
     build_step_desc(step_desc, sizeof(step_desc),
-                    "Starting at", maze->player_pos, cols, 0, 0);
+                    "Starting at", (*maze).player_pos, cols, 0, 0);
 
+    int result = 0;
     while (!stack_is_empty(path)) {
         int current = stack_peek(path);
 
@@ -152,7 +158,8 @@ static int run_first(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode 
             if (display == DISPLAY_INTERACTIVE) wait_enter();
             renderer_print_solution(path, maze);
             renderer_write_solution(path, maze, backpack);
-            return 1;
+            result = 1;
+            break;
         }
 
         if (display == DISPLAY_INTERACTIVE) wait_enter();
@@ -162,10 +169,10 @@ static int run_first(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode 
             if (is_wrap(current, d, cols))   continue;
             int next = current + offsets[d];
             if (!maze_is_valid(maze, next))  continue;
-            if (!maze->reachable[next])      continue; /* skip dead-end cells */
+            if (!(*maze).reachable[next])    continue; /* skip dead-end cells */
 
             apply_event(maze, next, backpack, &events[next].type, &events[next].value);
-            maze->visited[next] = 1;
+            (*maze).visited[next] = 1;
             stack_push(path, next);
             found = 1;
             build_step_desc(step_desc, sizeof(step_desc),
@@ -184,12 +191,21 @@ static int run_first(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode 
             undo_event(backpack, events[popped].type, events[popped].value);
         }
     }
-    return 0;
+
+    free(events);
+    return result;
 }
 
+/*
+Solution
+*/
+
+/* Heap-allocated snapshot of the best path and backpack found during BACKTRACK_BEST.
+ * path_data/backpack_values are NULL when found == 0. */
 typedef struct {
-    Stack path;
-    int   backpack_values[MAX_CELLS]; /* snapshot of winning backpack contents */
+    int  *path_data;
+    int   path_top;
+    int  *backpack_values;
     int   backpack_size;
     int   total_value;
     int   found;
@@ -204,7 +220,7 @@ typedef struct {
  * @param maze               Source maze; visited[] is mutated and restored on backtrack.
  * @param path               Current exploration path stack.
  * @param backpack           Player's backpack; mutated and restored on backtrack.
- * @param events             Per-cell event record (size MAX_CELLS) used for undo.
+ * @param events             Per-cell event record used for undo.
  * @param best               Accumulates the highest-value solution found so far.
  * @param display            Rendering mode.
  * @param arrived_msg        Human-readable description of the move that reached current.
@@ -219,11 +235,11 @@ static void explore(Maze *maze, Stack *path, LinkedList *backpack,
      * admissible upper bound — it assumes every uncollected treasure is taken
      * with zero trap losses (the most optimistic possible outcome). Pruning
      * when this can't beat the best found is therefore always safe. */
-    if (best->found && current_total + remaining_treasure <= best->total_value)
+    if ((*best).found && current_total + remaining_treasure <= (*best).total_value)
         return;
 
     int current = stack_peek(path);
-    int cols    = maze->cols;
+    int cols    = (*maze).cols;
 
     if (display != DISPLAY_NONE)
         renderer_draw(maze, current, backpack, path);
@@ -234,15 +250,28 @@ static void explore(Maze *maze, Stack *path, LinkedList *backpack,
     }
 
     if (maze_cell(maze, current) == CELL_EXIT) {
-        if (!best->found || current_total > best->total_value) {
-            best->found         = 1;
-            best->total_value   = current_total;
-            best->path          = *path; /* copy the full stack struct (fixed array) */
-            best->backpack_size = 0;
-            /* Snapshot the backpack because the live list will be mutated as
-             * the recursion continues exploring other branches. */
-            for (Node *n = backpack->head; n; n = n->next)
-                best->backpack_values[best->backpack_size++] = n->value;
+        if (!(*best).found || current_total > (*best).total_value) {
+            (*best).found       = 1;
+            (*best).total_value = current_total;
+
+            /* Deep-copy the path so subsequent exploration doesn't corrupt it. */
+            int path_len = (*path).top + 1;
+            free((*best).path_data);
+            (*best).path_data = malloc(path_len * sizeof(int));
+            if (!(*best).path_data) { fprintf(stderr, "malloc failed\n"); exit(1); }
+            memcpy((*best).path_data, (*path).data, path_len * sizeof(int));
+            (*best).path_top = (*path).top;
+
+            /* Deep-copy the backpack contents. */
+            free((*best).backpack_values);
+            (*best).backpack_size   = 0;
+            (*best).backpack_values = NULL;
+            if ((*backpack).size > 0) {
+                (*best).backpack_values = malloc((*backpack).size * sizeof(int));
+                if (!(*best).backpack_values) { fprintf(stderr, "malloc failed\n"); exit(1); }
+            }
+            for (Node *n = (*backpack).head; n; n = (*n).next)
+                (*best).backpack_values[(*best).backpack_size++] = (*n).value;
         }
 
         if (display == DISPLAY_INTERACTIVE)
@@ -257,10 +286,10 @@ static void explore(Maze *maze, Stack *path, LinkedList *backpack,
         if (is_wrap(current, d, cols))   continue;
         int next = current + offsets[d];
         if (!maze_is_valid(maze, next))  continue;
-        if (!maze->reachable[next])      continue;
+        if (!(*maze).reachable[next])    continue;
 
         apply_event(maze, next, backpack, &events[next].type, &events[next].value);
-        maze->visited[next] = 1;
+        (*maze).visited[next] = 1;
         stack_push(path, next);
 
         /* Both counters are passed by value into the child call, so the parent's
@@ -285,7 +314,7 @@ static void explore(Maze *maze, Stack *path, LinkedList *backpack,
         /* Undo structural state (stack, visited, backpack) so this cell can be
          * entered again from a different parent branch. */
         stack_pop(path);
-        maze->visited[next] = 0;
+        (*maze).visited[next] = 0;
         undo_event(backpack, ev_type, ev_val);
 
         if (display == DISPLAY_INTERACTIVE) {
@@ -310,8 +339,13 @@ static void explore(Maze *maze, Stack *path, LinkedList *backpack,
  * @return         1 if any solution exists, 0 otherwise.
  */
 static int run_best(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode display) {
-    CellEvent events[MAX_CELLS];
-    memset(events, 0, sizeof(events));
+    int n_cells = (*maze).rows * (*maze).cols;
+
+    CellEvent *events = calloc(n_cells, sizeof(CellEvent));
+    if (!events) {
+        fprintf(stderr, "malloc failed\n");
+        return 0;
+    }
 
     Solution best;
     memset(&best, 0, sizeof(best));
@@ -319,27 +353,39 @@ static int run_best(Maze *maze, LinkedList *backpack, Stack *path, DisplayMode d
     /* Sum of all pre-assigned treasure values = the tightest possible upper
      * bound at the start (no treasure collected, no traps fired yet). */
     int total_treasure = 0;
-    for (int i = 0; i < maze->rows * maze->cols; i++)
-        total_treasure += maze->treasure_values[i];
+    for (int i = 0; i < n_cells; i++)
+        total_treasure += (*maze).treasure_values[i];
 
     char start_msg[64];
     snprintf(start_msg, sizeof(start_msg),
              "Starting at (%d, %d)",
-             maze->player_pos / maze->cols,
-             maze->player_pos % maze->cols);
+             (*maze).player_pos / (*maze).cols,
+             (*maze).player_pos % (*maze).cols);
 
     explore(maze, path, backpack, events, &best, display,
             start_msg, total_treasure, 0);
 
-    if (!best.found) return 0;
+    free(events);
 
-    /* Restore the winning path and rebuild the backpack from the snapshot.
-     * The live stack/backpack are in an arbitrary state after full exploration. */
-    *path = best.path;
+    if (!best.found) {
+        free(best.path_data);
+        free(best.backpack_values);
+        return 0;
+    }
+
+    /* Rebuild the path stack from the winning snapshot. */
+    stack_free(path);
+    stack_init(path);
+    for (int i = 0; i <= best.path_top; i++)
+        stack_push(path, best.path_data[i]);
+    free(best.path_data);
+
+    /* Rebuild the backpack from the winning snapshot. */
     list_free(backpack);
     list_init(backpack);
     for (int i = 0; i < best.backpack_size; i++)
         list_insert(backpack, best.backpack_values[i]);
+    free(best.backpack_values);
 
     renderer_print_solution(path, maze);
     renderer_write_solution(path, maze, backpack);
@@ -355,10 +401,15 @@ int backtrack_run(Maze *maze, LinkedList *backpack, BacktrackMode mode, DisplayM
 
     Stack path;
     stack_init(&path);
-    stack_push(&path, maze->player_pos);
-    maze->visited[maze->player_pos] = 1;
+    stack_push(&path, (*maze).player_pos);
+    (*maze).visited[(*maze).player_pos] = 1;
 
+    int result;
     if (mode == BACKTRACK_BEST)
-        return run_best(maze, backpack, &path, display);
-    return run_first(maze, backpack, &path, display);
+        result = run_best(maze, backpack, &path, display);
+    else
+        result = run_first(maze, backpack, &path, display);
+
+    stack_free(&path);
+    return result;
 }

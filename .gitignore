@@ -5,7 +5,7 @@ build/
 # Generated output
 output/solution.txt
 
-# Editor
+# Editors
 .vscode/
 .idea/
 *.swp

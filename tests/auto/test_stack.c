@@ -29,6 +29,7 @@ static void test_push_peek_pop(void) {
     int v = stack_pop(&s);
     ASSERT(v == 42,               "pop returns correct value");
     ASSERT(stack_is_empty(&s),    "is_empty after pop");
+    stack_free(&s);
 }
 
 static void test_lifo_order(void) {
@@ -44,6 +45,7 @@ static void test_lifo_order(void) {
     ASSERT(stack_pop(&s) == 2, "pop 2nd = 2");
     ASSERT(stack_pop(&s) == 1, "pop 3rd = 1");
     ASSERT(stack_is_empty(&s), "empty after 3 pops");
+    stack_free(&s);
 }
 
 static void test_underflow_guard(void) {
@@ -72,6 +74,7 @@ static void test_many_pushes(void) {
 
     ASSERT(ok,                 "100 items pop in LIFO order");
     ASSERT(stack_is_empty(&s), "empty after 100 pops");
+    stack_free(&s);
 }
 
 int main(void) {

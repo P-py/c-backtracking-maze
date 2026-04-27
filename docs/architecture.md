@@ -18,7 +18,7 @@ graph TD
 
     renderer["<b>engine/renderer.c</b><br/>Live trail display + backpack<br/>Prints/writes final solution"]
 
-    stack["<b>structures/stack.c</b><br/>Fixed-array int stack<br/>Tracks current path"]
+    stack["<b>structures/stack.c</b><br/>Dynamic (realloc) int stack<br/>Tracks current path"]
 
     linked_list["<b>structures/linked_list.c</b><br/>Sorted linked list<br/>The backpack"]
 
@@ -48,7 +48,7 @@ graph LR
 
     maze_obj["Maze*  (heap, via maze_load)\n─────────────────\ncells[]          raw grid chars\nvisited[]        runtime DFS state\nreachable[]      BFS pre-computed\ntreasure_values[] pre-assigned coins"]
     backpack_obj["LinkedList\n(stack-allocated in main)"]
-    path_stack["Stack\n(stack-allocated in backtrack_run)"]
+    path_stack["Stack\n(stack-allocated in backtrack_run;\nheap-allocated data array inside)"]
 
     main_owns -- "creates / frees" --> maze_obj
     main_owns -- "initialises"      --> backpack_obj
@@ -190,7 +190,7 @@ flowchart TD
     LOOP -->|All 4 tried| DONE([return])
 ```
 
-After all `explore` calls return to `run_best`: restore winning path into caller's stack and rebuild backpack from saved snapshot.
+After all `explore` calls return to `run_best`: `stack_free` + `stack_init` + re-push from `best.path_data`; `list_free` + `list_init` + re-insert from `best.backpack_values`. Both snapshot arrays are `malloc`'d inside `explore` each time a better solution is found and freed after restoration.
 
 ## 5. Data Structure Roles
 
@@ -223,13 +223,13 @@ Always sorted ascending so the **head is always the cheapest treasure** — the 
 
 ## 6. Maze Memory Layout
 
-The maze is stored as a **flat 1D array** of `char` (row-major order). The `Maze` struct carries four parallel arrays over the same index space:
+The maze is stored as a **flat 1D array** (row-major order). The `Maze` struct holds four **heap-allocated parallel arrays** over the same index space, each `malloc`'d to `rows * cols` at load time and freed by `maze_free`:
 
 ```
-cells[i]           — raw cell char from the file ('P', 'T', 'A', 'S', ' ', '#')
-visited[i]         — 0/1, mutated during DFS, reset on backtrack (BEST mode)
-reachable[i]       — 0/1, computed once at load by BFS from exit, never mutated
-treasure_values[i] — pre-assigned coin value (1–100) for CELL_TREASURE cells, 0 otherwise
+cells[i]           — char *; raw cell char from the file ('P', 'T', 'A', 'S', ' ', '#')
+visited[i]         — char *; 0/1, mutated during DFS, reset on backtrack (BEST mode)
+reachable[i]       — char *; 0/1, computed once at load by BFS from exit, never mutated
+treasure_values[i] — int  *; pre-assigned coin value (1–100) for CELL_TREASURE cells, 0 otherwise
 ```
 
 Index formula for a 4×5 grid (cols = 5):
