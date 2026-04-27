@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <limits.h>
 #include <maze.h>
 #include <defs.h>
 
@@ -30,7 +32,8 @@ Maze *maze_load(const char *filepath) {
     char   *buf     = NULL; /* owned by getline; freed after the loop */
     size_t  buf_cap = 0;
     char  **lines   = NULL;
-    int     rows    = 0, rows_cap = 0, cols = 0;
+    int     rows    = 0, cols = 0;
+    size_t  rows_cap = 0;
 
     while (getline(&buf, &buf_cap, f) != -1) {
         strip_newline(buf);
@@ -38,9 +41,18 @@ Maze *maze_load(const char *filepath) {
         if (len == 0) continue;
         if (len > cols) cols = len;
 
-        if (rows == rows_cap) {
-            int new_cap = rows_cap ? rows_cap * 2 : 16;
-            char **tmp  = realloc(lines, new_cap * sizeof(char *));
+        if ((size_t)rows == rows_cap) {
+            size_t max_cap = SIZE_MAX / sizeof(char *);
+            if (rows_cap > max_cap / 2) {
+                fclose(f);
+                free(buf);
+                fprintf(stderr, "maze too large\n");
+                for (int i = 0; i < rows; i++) free(lines[i]);
+                free(lines);
+                return NULL;
+            }
+            size_t new_cap = rows_cap ? rows_cap * 2 : 16;
+            char **tmp     = realloc(lines, new_cap * sizeof(char *));
             if (!tmp) {
                 fclose(f);
                 free(buf);
@@ -75,7 +87,18 @@ Maze *maze_load(const char *filepath) {
     }
 
     /* --- Allocate Maze and its dynamic arrays --- */
-    int n = rows * cols;
+    /* Compute cell count as size_t to avoid signed overflow, then verify it
+     * fits in int — all indices (stack, BFS queue, player_pos, exit_pos) are
+     * int, so a grid larger than INT_MAX cells cannot be indexed safely. */
+    size_t n_st = (size_t)rows * (size_t)cols;
+    if (n_st > (size_t)INT_MAX) {
+        fprintf(stderr, "Error: maze too large (%zu cells, max %d)\n",
+                n_st, INT_MAX);
+        for (int i = 0; i < rows; i++) free(lines[i]);
+        free(lines);
+        return NULL;
+    }
+    int n = (int)n_st;
 
     Maze *m = malloc(sizeof(Maze));
     if (!m) {
@@ -132,26 +155,27 @@ Maze *maze_load(const char *filepath) {
         return NULL;
     }
 
-    maze_compute_reachability(m);
+    if (maze_compute_reachability(m) != 0) {
+        fprintf(stderr, "malloc failed\n");
+        maze_free(m);
+        return NULL;
+    }
     maze_assign_treasures(m);
 
     return m;
 }
 
 /** @brief BFS from the exit to populate reachable[]; see maze.h. */
-void maze_compute_reachability(Maze *m) {
+int maze_compute_reachability(Maze *m) {
     /* BFS backward from the exit — a cell is reachable iff there exists
      * a path of passable cells from it to the exit, ignoring visited state.
      * Running from the exit (not the player) means we don't need player_pos
      * and the result is valid for every possible starting branch of the DFS. */
-    int n = (*m).rows * (*m).cols;
+    int n = (*m).rows * (*m).cols; /* safe: validated to fit int at load time */
     memset((*m).reachable, 0, n);
 
-    int *queue = malloc(n * sizeof(int));
-    if (!queue) {
-        fprintf(stderr, "malloc failed\n");
-        exit(1);
-    }
+    int *queue = malloc((size_t)n * sizeof(int));
+    if (!queue) return -1;
     int head = 0, tail = 0;
     int offsets[4] = {-(*m).cols, +(*m).cols, -1, +1};
 
@@ -179,14 +203,15 @@ void maze_compute_reachability(Maze *m) {
     }
 
     free(queue);
+    return 0;
 }
 
 /** @brief Pre-assign random coin values to all CELL_TREASURE cells; see maze.h. */
 void maze_assign_treasures(Maze *m) {
     /* Values are assigned at load time, not on first step, so branch-and-bound
      * can compute the exact total remaining treasure before the DFS starts. */
-    int n = (*m).rows * (*m).cols;
-    memset((*m).treasure_values, 0, n * sizeof(int));
+    int n = (*m).rows * (*m).cols; /* safe: validated to fit int at load time */
+    memset((*m).treasure_values, 0, (size_t)n * sizeof(int));
     for (int i = 0; i < n; i++) {
         if ((*m).cells[i] == CELL_TREASURE)
             (*m).treasure_values[i] = (rand() % 100) + 1;

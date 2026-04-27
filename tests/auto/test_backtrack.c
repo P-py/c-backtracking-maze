@@ -16,24 +16,45 @@ static int failures = 0;
 static Maze *make_maze(const char *grid, int cols, int rows) {
     int n   = rows * cols;
     Maze *m = malloc(sizeof(Maze));
+    if (!m) { fprintf(stderr, "make_maze: out of memory (Maze)\n"); abort(); }
 
-    (*m).cells           = malloc(n);
-    (*m).visited         = calloc(n, 1);
-    (*m).reachable       = calloc(n, 1);
-    (*m).treasure_values = calloc(n, sizeof(int));
-    (*m).rows       = rows;
-    (*m).cols       = cols;
-    (*m).player_pos = -1;
-    (*m).exit_pos   = -1;
+    m->cells           = NULL;
+    m->visited         = NULL;
+    m->reachable       = NULL;
+    m->treasure_values = NULL;
 
-    memset((*m).cells, CELL_WALL, n);
-    for (int i = 0; i < n; i++) {
-        (*m).cells[i] = grid[i];
-        if (grid[i] == CELL_PLAYER) (*m).player_pos = i;
-        if (grid[i] == CELL_EXIT)   (*m).exit_pos   = i;
+    m->cells           = malloc(n);
+    m->visited         = calloc(n, 1);
+    m->reachable       = calloc(n, 1);
+    m->treasure_values = calloc(n, sizeof(int));
+
+    if (!m->cells || !m->visited || !m->reachable || !m->treasure_values) {
+        free(m->cells);
+        free(m->visited);
+        free(m->reachable);
+        free(m->treasure_values);
+        free(m);
+        fprintf(stderr, "make_maze: out of memory (arrays)\n");
+        abort();
     }
 
-    maze_compute_reachability(m);
+    m->rows       = rows;
+    m->cols       = cols;
+    m->player_pos = -1;
+    m->exit_pos   = -1;
+
+    memset(m->cells, CELL_WALL, n);
+    for (int i = 0; i < n; i++) {
+        m->cells[i] = grid[i];
+        if (grid[i] == CELL_PLAYER) m->player_pos = i;
+        if (grid[i] == CELL_EXIT)   m->exit_pos   = i;
+    }
+
+    if (maze_compute_reachability(m) != 0) {
+        maze_free(m);
+        fprintf(stderr, "make_maze: maze_compute_reachability failed\n");
+        abort();
+    }
     maze_assign_treasures(m);
     return m;
 }

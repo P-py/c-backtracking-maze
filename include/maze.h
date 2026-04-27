@@ -74,8 +74,9 @@ char maze_cell(const Maze *m, int pos);
  * the exit, regardless of visited state.  Called once at load time.
  *
  * @param m  Maze whose reachable[] array will be populated.
+ * @return   0 on success, -1 if the BFS queue allocation fails.
  */
-void maze_compute_reachability(Maze *m);
+int maze_compute_reachability(Maze *m);
 
 /**
  * @brief Pre-assign random coin values (1–100) to all CELL_TREASURE cells.

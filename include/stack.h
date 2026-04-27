@@ -9,12 +9,13 @@
 #ifndef STACK_H
 #define STACK_H
 
+#include <stddef.h>
 #include <defs.h>
 
 typedef struct {
-    int *data;     /**< Heap-allocated storage; NULL when capacity is 0. */
-    int  top;      /**< Index of the top element; -1 when empty. */
-    int  capacity; /**< Number of slots currently allocated. */
+    int    *data;     /**< Heap-allocated storage; NULL when capacity is 0. */
+    int     top;      /**< Index of the top element; -1 when empty. */
+    size_t  capacity; /**< Number of slots currently allocated. */
 } Stack;
 
 /**
@@ -33,7 +34,7 @@ void stack_free(Stack *s);
  * @brief Push @p value onto the top of the stack.
  *
  * Grows the internal array via realloc if needed.
- * Calls exit(1) on allocation failure.
+ * Calls exit(1) on allocation failure or if capacity would overflow.
  *
  * @param s      Target stack.
  * @param value  1D cell index to push.

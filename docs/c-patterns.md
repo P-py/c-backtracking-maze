@@ -31,8 +31,7 @@ File-level doc block at the top of every header:
  * @brief Dynamic integer stack used by the backtracking engine.
  *
  * Capacity grows automatically via realloc; call stack_free() when done.
- * All pop/peek operations must only be called on a non-empty stack.
- * Check stack_is_empty() first.
+ * stack_pop() and stack_peek() return -1 when the stack is empty.
  */
 ```
 

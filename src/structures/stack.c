@@ -1,5 +1,6 @@
 #include <stdio.h>  /* fprintf, stderr — used by stack_push on fatal alloc failure */
 #include <stdlib.h>
+#include <stdint.h>
 #include <stack.h>
 
 /**
@@ -27,9 +28,13 @@ void stack_free(Stack *s) {
 
 /** @brief Push @p value onto the stack; grows the array via realloc as needed. */
 void stack_push(Stack *s, int value) {
-    if ((*s).top == (*s).capacity - 1) {
-        int new_cap  = (*s).capacity ? (*s).capacity * 2 : 16;
-        int *new_data = realloc((*s).data, new_cap * sizeof(int));
+    if ((size_t)((*s).top + 1) == (*s).capacity) {
+        if ((*s).capacity > SIZE_MAX / (2 * sizeof(int))) {
+            fprintf(stderr, "stack: out of memory\n");
+            exit(1);
+        }
+        size_t new_cap   = (*s).capacity ? (*s).capacity * 2 : 16;
+        int   *new_data  = realloc((*s).data, new_cap * sizeof(int));
         if (!new_data) {
             fprintf(stderr, "stack: out of memory\n");
             exit(1);
